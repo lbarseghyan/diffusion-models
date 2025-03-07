@@ -902,7 +902,7 @@ class Trainer:
         adam_betas = (0.9, 0.99),
         save_and_sample_every = 1000,
         num_samples = 25,
-        results_folder = None,
+        results_folder = './results',
         amp = False,
         mixed_precision_type = 'fp16',
         split_batches = True,
@@ -969,18 +969,8 @@ class Trainer:
             self.ema = EMA(diffusion_model, beta = ema_decay, update_every = ema_update_every)
             self.ema.to(self.device)
 
-        if results_folder is not None:
-            self.results_folder = Path(results_folder)
-            self.results_folder.mkdir(parents=True, exist_ok = True)
-        else:
-            experiment_date = datetime.now().strftime("%d-%m-%Y")
-
-            self.results_folder = Path("./results")  / experiment_date
-            counter = 1
-            while self.results_folder.exists():
-                self.results_folder = Path("./results") / f"{experiment_date}_{counter}"
-                counter += 1
-            self.results_folder.mkdir(parents=True, exist_ok=True)
+        self.results_folder = Path(results_folder)
+        self.results_folder.mkdir(exist_ok = True)
 
         # step counter state
 
@@ -1009,7 +999,7 @@ class Trainer:
                 sampler=self.ema.ema_model,
                 channels=self.channels,
                 accelerator=self.accelerator,
-                stats_dir=self.results_folder,
+                stats_dir=results_folder,
                 device=self.device,
                 num_fid_samples=num_fid_samples,
                 inception_block_idx=inception_block_idx
@@ -1080,10 +1070,20 @@ class Trainer:
         accelerator = self.accelerator
         device = accelerator.device
 
-        if accelerator.is_main_process:
-            self.save_training_params(str(self.results_folder))
+        # Create a subfolder inside self.results_folder with today's date.
+        # If the folder exists, append a suffix (_1, _2, etc.) until an unused name is found.
+        experiment_date = datetime.now().strftime("%d-%m-%Y")
+        results_subfolder = self.results_folder / experiment_date
+        counter = 1
+        while results_subfolder.exists():
+            results_subfolder = self.results_folder / f"{experiment_date}_{counter}"
+            counter += 1
+        results_subfolder.mkdir(parents=True, exist_ok=True)
 
-        writer = SummaryWriter(log_dir=str(self.results_folder / "tensorboard_logs"))
+        if accelerator.is_main_process:
+            self.save_training_params(str(results_subfolder))
+
+        writer = SummaryWriter(log_dir=str(results_subfolder / "tensorboard_logs"))
 
         with tqdm(initial = self.step, total = self.train_num_steps, disable = not accelerator.is_main_process) as pbar:
 
@@ -1127,7 +1127,7 @@ class Trainer:
 
                         all_images = torch.cat(all_images_list, dim = 0)
 
-                        utils.save_image(all_images, str(self.results_folder / f'sample-{milestone}.png'), nrow = int(math.sqrt(self.num_samples)))
+                        utils.save_image(all_images, str(results_subfolder / f'sample-{milestone}.png'), nrow = int(math.sqrt(self.num_samples)))
 
                         # Log generated samples to TensorBoard
                         # Assuming all_images is in [C, H, W] format per sample (batched as [B, C, H, W])

@@ -3,3 +3,5 @@ __pycache__/
 venv/
 denoising-diffusion-pytorch/results/
 denoising-diffusion-pytorch/test.py
+denoising-diffusion-pytorch/denoising_diffusion_pytorch_old_copy.py
+results*/
