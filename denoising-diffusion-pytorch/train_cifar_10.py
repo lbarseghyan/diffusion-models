@@ -12,19 +12,20 @@ diffusion = GaussianDiffusion(
     model,
     image_size = 32,
     timesteps = 1000,           # number of steps
+    hybrid_loss = True
 )
 
 
 trainer = Trainer(
     diffusion,
-    '../data/cifar-10/train_images',
+    '../cifar-10/all_images',
     train_batch_size = 64,
     train_lr = 2e-4,
     train_num_steps = 800000,           
     calculate_fid = False,              
     save_and_sample_every = 5000,
     # num_fid_samples = 5000              # CHANGE  
-    results_folder = '/home/user1809/Desktop/diffusion-models/results/800k_steps_fid_samples_false_07_03_25' 
+    results_folder = 'results/800k_steps_fid_samples_false_07_03_25' 
 )
 
 
