@@ -10,23 +10,7 @@ from tqdm import tqdm
 from einops import rearrange, repeat, reduce
 from einops.layers.torch import Rearrange
 
-# helpers
-
-def exists(val):
-    return val is not None
-
-def default(val, d):
-    if exists(val):
-        return val
-    return d() if callable(d) else d
-
-# normalization functions
-
-def normalize_to_neg_one_to_one(img):
-    return img * 2 - 1
-
-def unnormalize_to_zero_to_one(t):
-    return (t + 1) * 0.5
+from denoising_diffusion_pytorch.utils import exists, default, normalize_to_neg_one_to_one, unnormalize_to_zero_to_one
 
 # diffusion helpers
 

@@ -37,59 +37,11 @@ from denoising_diffusion_pytorch.attend import Attend
 
 from denoising_diffusion_pytorch.version import __version__
 
+from denoising_diffusion_pytorch.utils import *
+
 # constants
 
 ModelPrediction =  namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
-
-# helpers functions
-
-def exists(x):
-    return x is not None
-
-def default(val, d):
-    if exists(val):
-        return val
-    return d() if callable(d) else d
-
-def cast_tuple(t, length = 1):
-    if isinstance(t, tuple):
-        return t
-    return ((t,) * length)
-
-def divisible_by(numer, denom):
-    return (numer % denom) == 0
-
-def identity(t, *args, **kwargs):
-    return t
-
-def cycle(dl):
-    while True:
-        for data in dl:
-            yield data
-
-def has_int_squareroot(num):
-    return (math.sqrt(num) ** 2) == num
-
-def num_to_groups(num, divisor):
-    groups = num // divisor
-    remainder = num % divisor
-    arr = [divisor] * groups
-    if remainder > 0:
-        arr.append(remainder)
-    return arr
-
-def convert_image_to_fn(img_type, image):
-    if image.mode != img_type:
-        return image.convert(img_type)
-    return image
-
-# normalization functions
-
-def normalize_to_neg_one_to_one(img):
-    return img * 2 - 1
-
-def unnormalize_to_zero_to_one(t):
-    return (t + 1) * 0.5
 
 # small helper modules
 
@@ -497,7 +449,8 @@ class GaussianDiffusion(Module):
         min_snr_loss_weight = False, # https://arxiv.org/abs/2303.09556
         min_snr_gamma = 5,
         immiscible = False,
-        ddpm = True               # +
+        ddpm = True,                  # +
+        hybrid_loss = False          # From Improved DDPM
     ):
         super().__init__()
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
@@ -607,6 +560,8 @@ class GaussianDiffusion(Module):
 
         self.normalize = normalize_to_neg_one_to_one if auto_normalize else identity
         self.unnormalize = unnormalize_to_zero_to_one if auto_normalize else identity
+
+        self.hybrid_loss = hybrid_loss
 
     @property
     def device(self):
@@ -840,7 +795,31 @@ class GaussianDiffusion(Module):
         loss = reduce(loss, 'b ... -> b', 'mean')
 
         loss = loss * extract(self.loss_weight, t, loss.shape)
+        # loss.mean()
+
+        if self.hybrid_loss:
+            # Get the model's reverse distribution parameters:
+            model_mean, _, model_log_variance, _ = self.p_mean_variance(x=x, t=t, x_self_cond=x_self_cond, clip_denoised=True)
+
+            # Get the true posterior parameters:
+            posterior_mean, posterior_variance, posterior_log_variance_clipped = self.q_posterior(x_start, x, t)
+
+            # Compute KL divergence per sample (elementwise):
+            kl = 0.5 * (
+                posterior_log_variance_clipped - model_log_variance +
+                (torch.exp(model_log_variance) + (model_mean - posterior_mean)**2) / posterior_variance - 1
+            )
+            # Average KL over non-batch dimensions:
+            kl = reduce(kl, 'b ... -> b', 'mean')
+
+            # Optionally, only consider KL for t > 0:
+            mask = (t > 0).float()
+            kl = (kl * mask).sum() / (mask.sum() + 1e-8)
+
+            loss = loss + 0.001 * kl
+
         return loss.mean()
+
 
     def forward(self, img, *args, **kwargs):
         b, c, h, w, device, img_size, = *img.shape, img.device, self.image_size
