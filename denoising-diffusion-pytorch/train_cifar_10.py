@@ -19,7 +19,7 @@ diffusion = GaussianDiffusion(
 trainer = Trainer(
     diffusion,
     '../data/cifar-10/train_images',
-    train_batch_size = 128,
+    train_batch_size = 64,
     train_lr = 2e-4,
     train_num_steps = 800000,         # total training steps,
     calculate_fid = False, 
@@ -27,7 +27,7 @@ trainer = Trainer(
     # ema_decay = 0.995,                # exponential moving average decay
     # amp = True,                       # turn on mixed precision,   default = False
     save_and_sample_every = 5000,
-    results_folder = '/home/user1809/Desktop/diffusion-models/results/800k_steps_fid_samples_false_07_03_25' 
+    results_folder = '/home/user1809/Desktop/diffusion-models/results/800k_steps_fid_samples_false_12_03_25' 
 
 )
 

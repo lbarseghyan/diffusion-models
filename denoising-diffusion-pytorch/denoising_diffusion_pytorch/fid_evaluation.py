@@ -9,7 +9,7 @@ from pytorch_fid.inception import InceptionV3
 from torch.nn.functional import adaptive_avg_pool2d
 from tqdm.auto import tqdm
 
-from utils import num_to_groups
+from denoising_diffusion_pytorch.utils import num_to_groups
 
 
 class FIDEvaluation:
