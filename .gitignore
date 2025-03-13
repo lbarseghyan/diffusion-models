@@ -3,3 +3,6 @@ __pycache__/
 venv/
 denoising-diffusion-pytorch/results/
 denoising-diffusion-pytorch/test.py
+denoising-diffusion-pytorch/denoising_diffusion_pytorch/denoising_diffusion_pytorch_old_copy.py
+denoising-diffusion-pytorch/calculate_fid_cifar_10.py
+results*/

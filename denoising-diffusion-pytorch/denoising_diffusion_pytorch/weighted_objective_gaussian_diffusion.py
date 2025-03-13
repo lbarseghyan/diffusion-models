@@ -5,15 +5,7 @@ from einops import rearrange
 
 from denoising_diffusion_pytorch.denoising_diffusion_pytorch import GaussianDiffusion
 
-# helper functions
-
-def exists(x):
-    return x is not None
-
-def default(val, d):
-    if exists(val):
-        return val
-    return d() if isfunction(d) else d
+from denoising_diffusion_pytorch.utils import exists, default
 
 # some improvisation on my end
 # where i have the model learn to both predict noise and x0

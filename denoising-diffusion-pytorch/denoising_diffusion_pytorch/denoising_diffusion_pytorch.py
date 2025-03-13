@@ -5,6 +5,9 @@ from random import random
 from functools import partial
 from collections import namedtuple
 from multiprocessing import cpu_count
+import json
+import os
+from datetime import datetime
 
 import torch
 from torch import nn, einsum
@@ -12,6 +15,8 @@ import torch.nn.functional as F
 from torch.nn import Module, ModuleList
 from torch.amp import autocast
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
+
 
 from torch.optim import Adam
 
@@ -32,59 +37,11 @@ from denoising_diffusion_pytorch.attend import Attend
 
 from denoising_diffusion_pytorch.version import __version__
 
+from denoising_diffusion_pytorch.utils import *
+
 # constants
 
 ModelPrediction =  namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
-
-# helpers functions
-
-def exists(x):
-    return x is not None
-
-def default(val, d):
-    if exists(val):
-        return val
-    return d() if callable(d) else d
-
-def cast_tuple(t, length = 1):
-    if isinstance(t, tuple):
-        return t
-    return ((t,) * length)
-
-def divisible_by(numer, denom):
-    return (numer % denom) == 0
-
-def identity(t, *args, **kwargs):
-    return t
-
-def cycle(dl):
-    while True:
-        for data in dl:
-            yield data
-
-def has_int_squareroot(num):
-    return (math.sqrt(num) ** 2) == num
-
-def num_to_groups(num, divisor):
-    groups = num // divisor
-    remainder = num % divisor
-    arr = [divisor] * groups
-    if remainder > 0:
-        arr.append(remainder)
-    return arr
-
-def convert_image_to_fn(img_type, image):
-    if image.mode != img_type:
-        return image.convert(img_type)
-    return image
-
-# normalization functions
-
-def normalize_to_neg_one_to_one(img):
-    return img * 2 - 1
-
-def unnormalize_to_zero_to_one(t):
-    return (t + 1) * 0.5
 
 # small helper modules
 
@@ -492,7 +449,8 @@ class GaussianDiffusion(Module):
         min_snr_loss_weight = False, # https://arxiv.org/abs/2303.09556
         min_snr_gamma = 5,
         immiscible = False,
-        ddpm = True               # +
+        ddpm = True,                  # +
+        hybrid_loss = False          # From Improved DDPM
     ):
         super().__init__()
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
@@ -602,6 +560,8 @@ class GaussianDiffusion(Module):
 
         self.normalize = normalize_to_neg_one_to_one if auto_normalize else identity
         self.unnormalize = unnormalize_to_zero_to_one if auto_normalize else identity
+
+        self.hybrid_loss = hybrid_loss
 
     @property
     def device(self):
@@ -835,7 +795,31 @@ class GaussianDiffusion(Module):
         loss = reduce(loss, 'b ... -> b', 'mean')
 
         loss = loss * extract(self.loss_weight, t, loss.shape)
+        # loss.mean()
+
+        if self.hybrid_loss:
+            # Get the model's reverse distribution parameters:
+            model_mean, _, model_log_variance, _ = self.p_mean_variance(x=x, t=t, x_self_cond=x_self_cond, clip_denoised=True)
+
+            # Get the true posterior parameters:
+            posterior_mean, posterior_variance, posterior_log_variance_clipped = self.q_posterior(x_start, x, t)
+
+            # Compute KL divergence per sample (elementwise):
+            kl = 0.5 * (
+                posterior_log_variance_clipped - model_log_variance +
+                (torch.exp(model_log_variance) + (model_mean - posterior_mean)**2) / posterior_variance - 1
+            )
+            # Average KL over non-batch dimensions:
+            kl = reduce(kl, 'b ... -> b', 'mean')
+
+            # Optionally, only consider KL for t > 0:
+            mask = (t > 0).float()
+            kl = (kl * mask).sum() / (mask.sum() + 1e-8)
+
+            loss = loss + 0.001 * kl
+
         return loss.mean()
+
 
     def forward(self, img, *args, **kwargs):
         b, c, h, w, device, img_size, = *img.shape, img.device, self.image_size
@@ -897,7 +881,7 @@ class Trainer:
         adam_betas = (0.9, 0.99),
         save_and_sample_every = 1000,
         num_samples = 25,
-        results_folder = './results',
+        results_folder = None,
         amp = False,
         mixed_precision_type = 'fp16',
         split_batches = True,
@@ -964,8 +948,18 @@ class Trainer:
             self.ema = EMA(diffusion_model, beta = ema_decay, update_every = ema_update_every)
             self.ema.to(self.device)
 
-        self.results_folder = Path(results_folder)
-        self.results_folder.mkdir(exist_ok = True)
+        if results_folder is not None:
+            self.results_folder = Path(results_folder)
+            self.results_folder.mkdir(parents=True, exist_ok = True)
+        else:
+            experiment_date = datetime.now().strftime("%d-%m-%Y")
+
+            self.results_folder = Path("./results")  / experiment_date
+            counter = 1
+            while self.results_folder.exists():
+                self.results_folder = Path("./results") / f"{experiment_date}_{counter}"
+                counter += 1
+            self.results_folder.mkdir(parents=True, exist_ok=True)
 
         # step counter state
 
@@ -994,7 +988,7 @@ class Trainer:
                 sampler=self.ema.ema_model,
                 channels=self.channels,
                 accelerator=self.accelerator,
-                stats_dir=results_folder,
+                stats_dir=self.results_folder,
                 device=self.device,
                 num_fid_samples=num_fid_samples,
                 inception_block_idx=inception_block_idx
@@ -1045,9 +1039,30 @@ class Trainer:
         if exists(self.accelerator.scaler) and exists(data['scaler']):
             self.accelerator.scaler.load_state_dict(data['scaler'])
 
+
+    def save_training_params(self, folder):
+        # Create a dictionary that includes all attributes set during __init__
+        params = {}
+        for key, value in self.__dict__.items():
+            try:
+                json.dumps(value)
+                params[key] = value
+            except TypeError:
+                params[key] = str(value)
+        params_file = os.path.join(folder, "training_params.json")
+        with open(params_file, "w") as f:
+            json.dump(params, f, indent=4)
+        print(f"Training parameters saved to {params_file}")
+
+
     def train(self):
         accelerator = self.accelerator
         device = accelerator.device
+
+        if accelerator.is_main_process:
+            self.save_training_params(str(self.results_folder))
+
+        writer = SummaryWriter(log_dir=str(self.results_folder / "tensorboard_logs"))
 
         with tqdm(initial = self.step, total = self.train_num_steps, disable = not accelerator.is_main_process) as pbar:
 
@@ -1078,6 +1093,7 @@ class Trainer:
 
                 self.step += 1
                 if accelerator.is_main_process:
+                    writer.add_scalar("Train/Loss", total_loss, self.step)
                     self.ema.update()
 
                     if self.step != 0 and divisible_by(self.step, self.save_and_sample_every):
@@ -1092,11 +1108,16 @@ class Trainer:
 
                         utils.save_image(all_images, str(self.results_folder / f'sample-{milestone}.png'), nrow = int(math.sqrt(self.num_samples)))
 
-                        # whether to calculate fid
+                        # Log generated samples to TensorBoard
+                        # Assuming all_images is in [C, H, W] format per sample (batched as [B, C, H, W])
+                        writer.add_images("Samples", all_images, self.step, dataformats="NCHW")
 
+
+                        # whether to calculate fid
                         if self.calculate_fid:
                             fid_score = self.fid_scorer.fid_score()
                             accelerator.print(f'fid_score: {fid_score}')
+                            writer.add_scalar("Eval/FID", fid_score, self.step)
 
                         if self.save_best_and_latest_only:
                             if self.best_fid > fid_score:
@@ -1107,5 +1128,8 @@ class Trainer:
                             self.save(milestone)
 
                 pbar.update(1)
+            
+            torch.cuda.empty_cache()
 
         accelerator.print('training complete')
+        writer.close()
