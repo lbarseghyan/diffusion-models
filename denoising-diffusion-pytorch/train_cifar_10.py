@@ -22,14 +22,12 @@ trainer = Trainer(
     train_batch_size = 64,
     train_lr = 2e-4,
     train_num_steps = 800000,         # total training steps,
-    calculate_fid = False, 
     # gradient_accumulate_every = 2,    # gradient accumulation steps,  default = 1
     # ema_decay = 0.995,                # exponential moving average decay
     # amp = True,                       # turn on mixed precision,   default = False
-    save_and_sample_every = 5000,
-    results_folder = '/home/user1809/Desktop/diffusion-models/results/800k_steps_fid_samples_false_12_03_25' 
-
+    calculate_fid = False              # whether to calculate fid during training
 )
+
 
 if __name__ == '__main__':
     # Place all code that starts new processes or spawns workers here
