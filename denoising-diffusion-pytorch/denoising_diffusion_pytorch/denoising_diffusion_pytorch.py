@@ -887,6 +887,7 @@ class Trainer:
         split_batches = True,
         convert_image_to = None,
         calculate_fid = True,
+        calculate_is = True,
         inception_block_idx = 2048,
         max_grad_norm = 1.,
         num_fid_samples = 50000,
@@ -992,6 +993,23 @@ class Trainer:
                 device=self.device,
                 num_fid_samples=num_fid_samples,
                 inception_block_idx=inception_block_idx
+            )
+
+        # Inception Score (IS) computation
+
+        self.calculate_is = calculate_is and self.accelerator.is_main_process  # Ensure only main process calculates IS
+
+        if self.calculate_is:
+            from denoising_diffusion_pytorch.inception_score_evaluation import InceptionScoreEvaluation
+
+            self.is_scorer = InceptionScoreEvaluation(
+                batch_size=self.batch_size,
+                sampler=self.ema.ema_model,
+                channels=self.channels,
+                accelerator=self.accelerator,
+                stats_dir=self.results_folder,
+                device=self.device,
+                num_samples=num_fid_samples  # Use same count as FID for consistency
             )
 
         if save_best_and_latest_only:
@@ -1118,6 +1136,13 @@ class Trainer:
                             fid_score = self.fid_scorer.fid_score()
                             accelerator.print(f'fid_score: {fid_score}')
                             writer.add_scalar("Eval/FID", fid_score, self.step)
+
+                        # whether to calculate IS
+                        if self.calculate_is:
+                            is_score = self.is_scorer.calculate_inception_score()
+                            self.accelerator.print(f'Inception Score: {is_score}')
+                            writer.add_scalar("Eval/IS", is_score, self.step)
+
 
                         if self.save_best_and_latest_only:
                             if self.best_fid > fid_score:
