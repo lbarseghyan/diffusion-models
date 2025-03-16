@@ -1130,17 +1130,28 @@ class Trainer:
                         # Assuming all_images is in [C, H, W] format per sample (batched as [B, C, H, W])
                         writer.add_images("Samples", all_images, self.step, dataformats="NCHW")
 
+                        # Generate num_fid_samples 
+                        accelerator.print(f"Generating {self.fid_scorer.n_samples} sample for calculating FID and IS.")
+                        all_fake_samples_list = [] 
+                        with torch.inference_mode():
+                            batches = num_to_groups(self.fid_scorer.n_samples, self.batch_size)
+                            for batch in tqdm(batches):
+                                # Generate a batch of images.
+                                fake_samples =  self.ema.ema_model.sample(batch_size=batch).to(self.device)
+                                all_fake_samples_list.append(fake_samples)
+
+                        all_fake_samples = torch.cat(all_fake_samples_list, dim=0)
 
                         # whether to calculate fid
                         if self.calculate_fid:
-                            fid_score = self.fid_scorer.fid_score()
-                            accelerator.print(f'fid_score: {fid_score}')
+                            fid_score = self.fid_scorer.fid_score(all_fake_samples)
+                            accelerator.print(f'FID score: {fid_score}')
                             writer.add_scalar("Eval/FID", fid_score, self.step)
 
                         # whether to calculate IS
                         if self.calculate_is:
-                            is_score = self.is_scorer.calculate_inception_score()
-                            self.accelerator.print(f'Inception Score: {is_score}')
+                            is_score = self.is_scorer.calculate_inception_score(all_fake_samples)
+                            self.accelerator.print(f'Inception Score: {is_score:.4f}')
                             writer.add_scalar("Eval/IS", is_score, self.step)
 
 
@@ -1151,6 +1162,8 @@ class Trainer:
                             self.save("latest")
                         else:
                             self.save(milestone)
+
+                        self.accelerator.print()
 
                 pbar.update(1)
             

@@ -47,54 +47,120 @@ class InceptionScoreEvaluation:
         os.makedirs(stats_dir, exist_ok=True)
         self.log_path = os.path.join(stats_dir, "inception_score_log.txt")
 
-    @torch.inference_mode()
-    def calculate_inception_score(self):
-        """
-        Generates images using the sampler, computes the Inception Score (IS), logs it, and returns the score.
+    # @torch.inference_mode()
+    # def calculate_inception_score(self):
+    #     """
+    #     Generates images using the sampler, computes the Inception Score (IS), logs it, and returns the score.
         
+    #     Returns:
+    #         float: The Inception Score.
+    #     """
+    #     self.sampler.eval()
+    #     preds_list = []
+    #     batches = num_to_groups(self.n_samples, self.batch_size)
+    #     self.print_fn(f"Stacking Inception predictions for {self.n_samples} generated samples.")
+
+    #     for batch in tqdm(batches):
+
+    #         # Generate a batch of images.
+    #         fake_samples = self.sampler.sample(batch_size=batch).to(self.device)
+            
+    #         # If the images are grayscale, convert them to 3-channel RGB.
+    #         if self.channels == 1:
+    #             fake_samples = repeat(fake_samples, "b 1 h w -> b 3 h w")
+            
+    #         # Convert image range from [-1, 1] to [0, 1] if necessary.
+    #         if fake_samples.min() < 0:
+    #             fake_samples = (fake_samples + 1) / 2.0
+
+    #         # Resize images to 299x299 as expected by Inception v3.
+    #         if fake_samples.shape[-2:] != (299, 299):
+    #             fake_samples = F.interpolate(fake_samples, size=(299, 299), mode='bilinear', align_corners=False)
+
+    #         # Normalize using ImageNet mean and std.
+    #         mean = torch.tensor([0.485, 0.456, 0.406], device=self.device).view(1, 3, 1, 1)
+    #         std  = torch.tensor([0.229, 0.224, 0.225], device=self.device).view(1, 3, 1, 1)
+    #         fake_samples = (fake_samples - mean) / std
+
+    #         # Get logits and then softmax probabilities.
+    #         logits = self.inception_model(fake_samples)  # shape: (batch, 1000)
+    #         if isinstance(logits, tuple):           # logits may be a tuple (primary, aux) if aux_logits=True
+    #             logits = logits[0]                  # keep only the primary logits
+
+    #         probs = torch.softmax(logits, dim=1)
+    #         preds_list.append(probs.cpu())
+
+    #     preds = torch.cat(preds_list, dim=0)  # shape: (n_samples, 1000)
+    #     p_y = preds.mean(dim=0)
+
+    #     # Compute the KL divergence for each sample.
+    #     eps = 1e-10  # small constant for numerical stability
+    #     kl_div = preds * (torch.log(preds + eps) - torch.log(p_y + eps))
+    #     kl_div = kl_div.sum(dim=1)
+    #     avg_kl_div = kl_div.mean().item()
+    #     inception_score = math.exp(avg_kl_div)
+
+    #     # Log the computed Inception Score to file.
+    #     try:
+    #         with open(self.log_path, "a") as f:
+    #             f.write(f"{inception_score}\n")
+    #     except Exception as e:
+    #         self.print_fn("Warning: could not write Inception Score to log file:", e)
+
+    #     self.print_fn(f"Inception Score: {inception_score:.4f}")
+    #     return inception_score
+
+
+    @torch.inference_mode()
+    def calculate_inception_score(self, fake_samples):
+        """
+        Compute the Inception Score (IS) given a batch (or set) of generated fake_samples.
+        
+        Args:
+            fake_samples (torch.Tensor): Generated images (N, C, H, W)
+            
         Returns:
             float: The Inception Score.
         """
         self.sampler.eval()
         preds_list = []
-        batches = num_to_groups(self.n_samples, self.batch_size)
-        self.print_fn(f"Stacking Inception predictions for {self.n_samples} generated samples.")
+        # fake_samples is assumed to be a concatenation of multiple batches.
+        self.print_fn(f"Calculating Inception Score on {fake_samples.shape[0]} generated samples.")
 
-        for batch in tqdm(batches):
+        # Process fake_samples in mini-batches.
+        batches = num_to_groups(fake_samples.shape[0], self.batch_size)
+        for batch in batches:
+            batch_samples = fake_samples[:batch].to(self.device)
+            fake_samples = fake_samples[batch:]  # Remove the batch we just processed
 
-            # Generate a batch of images.
-            fake_samples = self.sampler.sample(batch_size=batch).to(self.device)
-            
-            # If the images are grayscale, convert them to 3-channel RGB.
+            # If grayscale, convert to 3-channel RGB.
             if self.channels == 1:
-                fake_samples = repeat(fake_samples, "b 1 h w -> b 3 h w")
-            
-            # Convert image range from [-1, 1] to [0, 1] if necessary.
-            if fake_samples.min() < 0:
-                fake_samples = (fake_samples + 1) / 2.0
+                batch_samples = repeat(batch_samples, "b 1 h w -> b 3 h w")
 
-            # Resize images to 299x299 as expected by Inception v3.
-            if fake_samples.shape[-2:] != (299, 299):
-                fake_samples = F.interpolate(fake_samples, size=(299, 299), mode='bilinear', align_corners=False)
+            # Convert range [-1, 1] to [0, 1] if necessary.
+            if batch_samples.min() < 0:
+                batch_samples = (batch_samples + 1) / 2.0
+
+            # Resize to 299x299 for Inception v3.
+            if batch_samples.shape[-2:] != (299, 299):
+                batch_samples = F.interpolate(batch_samples, size=(299, 299), mode='bilinear', align_corners=False)
 
             # Normalize using ImageNet mean and std.
             mean = torch.tensor([0.485, 0.456, 0.406], device=self.device).view(1, 3, 1, 1)
             std  = torch.tensor([0.229, 0.224, 0.225], device=self.device).view(1, 3, 1, 1)
-            fake_samples = (fake_samples - mean) / std
+            batch_samples = (batch_samples - mean) / std
 
-            # Get logits and then softmax probabilities.
-            logits = self.inception_model(fake_samples)  # shape: (batch, 1000)
-            if isinstance(logits, tuple):           # logits may be a tuple (primary, aux) if aux_logits=True
-                logits = logits[0]                  # keep only the primary logits
-
+            # Get logits and softmax probabilities.
+            logits = self.inception_model(batch_samples)
+            if isinstance(logits, tuple):
+                logits = logits[0]
             probs = torch.softmax(logits, dim=1)
             preds_list.append(probs.cpu())
 
-        preds = torch.cat(preds_list, dim=0)  # shape: (n_samples, 1000)
+        preds = torch.cat(preds_list, dim=0)  # shape: (N, 1000)
         p_y = preds.mean(dim=0)
 
-        # Compute the KL divergence for each sample.
-        eps = 1e-10  # small constant for numerical stability
+        eps = 1e-10
         kl_div = preds * (torch.log(preds + eps) - torch.log(p_y + eps))
         kl_div = kl_div.sum(dim=1)
         avg_kl_div = kl_div.mean().item()
@@ -107,5 +173,5 @@ class InceptionScoreEvaluation:
         except Exception as e:
             self.print_fn("Warning: could not write Inception Score to log file:", e)
 
-        self.print_fn(f"Inception Score: {inception_score:.4f}")
+        # self.print_fn(f"Inception Score: {inception_score:.4f}")
         return inception_score

@@ -81,22 +81,46 @@ class FIDEvaluation:
             self.m2, self.s2 = m2, s2
         self.dataset_stats_loaded = True
 
+    # @torch.inference_mode()
+    # def fid_score(self):
+    #     if not self.dataset_stats_loaded:
+    #         self.load_or_precalc_dataset_stats()
+    #     self.sampler.eval()
+    #     batches = num_to_groups(self.n_samples, self.batch_size)
+    #     stacked_fake_features = []
+    #     self.print_fn(
+    #         f"Stacking Inception features for {self.n_samples} generated samples."
+    #     )
+    #     for batch in tqdm(batches):
+    #         fake_samples = self.sampler.sample(batch_size=batch)
+    #         fake_features = self.calculate_inception_features(fake_samples)
+    #         stacked_fake_features.append(fake_features)
+    #     stacked_fake_features = torch.cat(stacked_fake_features, dim=0).cpu().numpy()
+    #     m1 = np.mean(stacked_fake_features, axis=0)
+    #     s1 = np.cov(stacked_fake_features, rowvar=False)
+
+    #     return calculate_frechet_distance(m1, s1, self.m2, self.s2)
+    
+
     @torch.inference_mode()
-    def fid_score(self):
+    def fid_score(self, fake_samples):
+        """
+        Compute the FID score given a batch (or set) of generated fake_samples.
+        
+        Args:
+            fake_samples (torch.Tensor): Generated images (N, C, H, W)
+        
+        Returns:
+            float: The FID score.
+        """
         if not self.dataset_stats_loaded:
             self.load_or_precalc_dataset_stats()
         self.sampler.eval()
-        batches = num_to_groups(self.n_samples, self.batch_size)
-        stacked_fake_features = []
-        self.print_fn(
-            f"Stacking Inception features for {self.n_samples} generated samples."
-        )
-        for batch in tqdm(batches):
-            fake_samples = self.sampler.sample(batch_size=batch)
-            fake_features = self.calculate_inception_features(fake_samples)
-            stacked_fake_features.append(fake_features)
-        stacked_fake_features = torch.cat(stacked_fake_features, dim=0).cpu().numpy()
-        m1 = np.mean(stacked_fake_features, axis=0)
-        s1 = np.cov(stacked_fake_features, rowvar=False)
+
+        # Compute inception features for the provided fake samples.
+        fake_features = self.calculate_inception_features(fake_samples)
+        fake_features = fake_features.cpu().numpy()
+        m1 = np.mean(fake_features, axis=0)
+        s1 = np.cov(fake_features, rowvar=False)
 
         return calculate_frechet_distance(m1, s1, self.m2, self.s2)
