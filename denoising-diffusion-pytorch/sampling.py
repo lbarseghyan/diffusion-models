@@ -25,7 +25,7 @@ diffusion = GaussianDiffusion(
     timesteps = 1000,           # number of steps
 )
 
-results_folder = 'results_ddim/14-03-2025___'
+training_results_folder = 'results/14-03-2025_models'
 
 trainer = Trainer(
     diffusion,
@@ -36,7 +36,7 @@ trainer = Trainer(
     calculate_fid = True,              
     save_and_sample_every = 5,
     num_fid_samples = 10,    
-    results_folder = results_folder        
+    results_folder = training_results_folder        
 )
 
     
@@ -50,33 +50,46 @@ if __name__ == '__main__':
         default=10,
         help="Number of timesteps for DDIM sampling (default: 200)"
     )
+
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="If set, use trained model with the given number."
+    )
+
     parser.add_argument(
         "--ddim_results_folder",
         type=str,
         default=None,
         help="Folder for DDIM results (default: auto-generated)"
     )
+
     parser.add_argument(
         "--ddim_sampling",
         action="store_false",
         help="If set, use DDIM sampling; otherwise, use DDPM sampling."
     )
+
     args = parser.parse_args()
 
     # Use the command-line argument for ddim_sampling_timesteps
     ddim_sampling_timesteps = args.ddim_sampling_timesteps      # 200
     ddim_results_folder = args.ddim_results_folder              # None
     ddim_sampling = args.ddim_sampling   # True
+    sampling_model = args.model 
 
-    # Find last milestone
-    pattern = re.compile(r"model-(\d+)\.pt")
-    milestones = []
-    for filename in os.listdir(results_folder):
-        match = pattern.fullmatch(filename)
-        if match:
-            milestones.append(int(match.group(1)))
-    last_milestone = max(milestones)
- 
+    # Find the model numbers
+    if sampling_model is not None:
+        milestones = [sampling_model]
+    else:
+        pattern = re.compile(r"model-(\d+)\.pt")
+        milestones = []
+        for filename in os.listdir(training_results_folder):
+            match = pattern.fullmatch(filename)
+            if match:
+                milestones.append(int(match.group(1)))
+        milestones.sort(reverse=True) 
 
     if ddim_results_folder is not None:
         ddim_results_folder = Path(ddim_results_folder)
@@ -84,18 +97,18 @@ if __name__ == '__main__':
     else:
         # experiment_date = datetime.now().strftime("%d-%m-%Y")
 
-        ddim_results_folder = Path("./results_ddim")  / f"{os.path.basename(results_folder)}_{ddim_sampling_timesteps}"
+        ddim_results_folder = Path("./results_ddim")  / f"{os.path.basename(training_results_folder)}_{ddim_sampling_timesteps}"
 
         counter = 1
         while ddim_results_folder.exists():
-            ddim_results_folder = Path("./results_ddim") / f"{os.path.basename(results_folder)}_{ddim_sampling_timesteps}_{counter}"
+            ddim_results_folder = Path("./results_ddim") / f"{os.path.basename(training_results_folder)}_{ddim_sampling_timesteps}_{counter}"
             counter += 1
         ddim_results_folder.mkdir(parents=True, exist_ok=True)
 
     writer = SummaryWriter(log_dir=str(ddim_results_folder / "tensorboard_logs"))
 
 
-    for milestone in range(1,last_milestone):   
+    for milestone in milestones:   
         accelerator = trainer.accelerator
 
         trainer.load(milestone)
