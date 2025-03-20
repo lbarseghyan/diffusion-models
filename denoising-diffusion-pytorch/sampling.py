@@ -1,16 +1,19 @@
 import argparse
-from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
+from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import cpu_count
 from denoising_diffusion_pytorch.utils import *
 from pathlib import Path
 import torch
 from torchvision import transforms as T, utils
-from datetime import datetime
-from functools import partial
 from tqdm.auto import tqdm
 import os
 import re
+from ema_pytorch import EMA
+from denoising_diffusion_pytorch.inception_score_evaluation import InceptionScoreEvaluation
+from denoising_diffusion_pytorch.fid_evaluation import FIDEvaluation
+from torch.utils.data import DataLoader
+
 
 model = Unet(
     dim = 64,
@@ -18,37 +21,33 @@ model = Unet(
     dropout = 0.1,
 )
 
-
 diffusion = GaussianDiffusion(
     model,
     image_size = 32,
     timesteps = 1000,           # number of steps
 )
 
-training_results_folder = 'results/14-03-2025_models'
 
-trainer = Trainer(
-    diffusion,
-    '../data/cifar-10/train_images',
-    train_batch_size = 64,
-    train_lr = 2e-4,
-    train_num_steps = 800000,           
-    calculate_fid = True,              
-    save_and_sample_every = 5,
-    num_fid_samples = 10,    
-    results_folder = training_results_folder        
-)
+ema_decay = 0.995
+ema_update_every = 10
+ema = EMA(diffusion, beta = ema_decay, update_every = ema_update_every)
 
-    
+num_samples = 25
+batch_size = 64
+device = 'cpu'
+inception_block_idx =2048  #from trainer
+image_size = 32            #from trainer
+training_images_folder = '../data/cifar-10/train_images'
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Run DDIM sampling for diffusion model")
+
     parser.add_argument(
-        "--ddim_sampling_timesteps",
-        type=int,
-        default=10,
-        help="Number of timesteps for DDIM sampling (default: 200)"
+        "--trained_models_folder",
+        type=str,
+        default='./results',
+        help="Folder for trained models"
     )
 
     parser.add_argument(
@@ -59,7 +58,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        "--ddim_results_folder",
+        "--generation_results_folder",
         type=str,
         default=None,
         help="Folder for DDIM results (default: auto-generated)"
@@ -71,13 +70,44 @@ if __name__ == '__main__':
         help="If set, use DDIM sampling; otherwise, use DDPM sampling."
     )
 
+    parser.add_argument(
+        "--ddim_sampling_timesteps",
+        type=int,
+        default=10,
+        help="Number of timesteps for DDIM sampling (default: 200)"
+    )
+
+    parser.add_argument(
+        "--calculate_is",
+        action="store_false",
+        help="If set, calculate IS."
+    )
+
+    parser.add_argument(
+        "--calculate_fid",
+        action="store_false",
+        help="If set, calculate FID."
+    )
+
+    parser.add_argument(
+        "--num_fid_samples",
+        type=int,
+        default=1000,
+        help="Number of images generated for FID evaluation"
+    )
+
     args = parser.parse_args()
 
     # Use the command-line argument for ddim_sampling_timesteps
+    trained_models_folder = args.trained_models_folder
     ddim_sampling_timesteps = args.ddim_sampling_timesteps      # 200
-    ddim_results_folder = args.ddim_results_folder              # None
+    generation_results_folder = args.generation_results_folder              # None
     ddim_sampling = args.ddim_sampling   # True
     sampling_model = args.model 
+    calculate_fid = args.calculate_fid 
+    calculate_is = args.calculate_is 
+    num_fid_samples = args.num_fid_samples 
+
 
     # Find the model numbers
     if sampling_model is not None:
@@ -85,77 +115,101 @@ if __name__ == '__main__':
     else:
         pattern = re.compile(r"model-(\d+)\.pt")
         milestones = []
-        for filename in os.listdir(training_results_folder):
+        for filename in os.listdir(trained_models_folder):
             match = pattern.fullmatch(filename)
             if match:
                 milestones.append(int(match.group(1)))
-        milestones.sort(reverse=True) 
+        milestones.sort() 
 
-    if ddim_results_folder is not None:
-        ddim_results_folder = Path(ddim_results_folder)
-        ddim_results_folder.mkdir(parents=True, exist_ok = True)
+    if generation_results_folder is not None:
+        generation_results_folder = Path(generation_results_folder)
+        generation_results_folder.mkdir(parents=True, exist_ok = True)
     else:
-        # experiment_date = datetime.now().strftime("%d-%m-%Y")
-
-        ddim_results_folder = Path("./results_ddim")  / f"{os.path.basename(training_results_folder)}_{ddim_sampling_timesteps}"
+        generation_results_folder = Path("./results_ddim")  / f"{os.path.basename(trained_models_folder)}_{ddim_sampling_timesteps}"
 
         counter = 1
-        while ddim_results_folder.exists():
-            ddim_results_folder = Path("./results_ddim") / f"{os.path.basename(training_results_folder)}_{ddim_sampling_timesteps}_{counter}"
+        while generation_results_folder.exists():
+            generation_results_folder = Path("./results_ddim") / f"{os.path.basename(trained_models_folder)}_{ddim_sampling_timesteps}_{counter}"
             counter += 1
-        ddim_results_folder.mkdir(parents=True, exist_ok=True)
+        generation_results_folder.mkdir(parents=True, exist_ok=True)
 
-    writer = SummaryWriter(log_dir=str(ddim_results_folder / "tensorboard_logs"))
+    writer = SummaryWriter(log_dir=str(generation_results_folder / "tensorboard_logs"))
 
+    if calculate_fid:
+            convert_image_to = {1: 'L', 3: 'RGB', 4: 'RGBA'}.get(diffusion.channels)
+            augment_horizontal_flip = True  # from trainer
+            ds = Dataset(training_images_folder, image_size, augment_horizontal_flip = augment_horizontal_flip, convert_image_to = convert_image_to)
+            dl = DataLoader(ds, batch_size = batch_size, shuffle = True, pin_memory = True, num_workers = cpu_count())
+            dl = cycle(dl)
 
-    for milestone in milestones:   
-        accelerator = trainer.accelerator
+    for milestone in milestones: 
+        data = torch.load(str(Path(trained_models_folder) / f'model-{milestone}.pt'), map_location=device, weights_only=True)
+        ema.load_state_dict(data["ema"])
+        ema.ema_model.eval()
+        step = data['step']
 
-        trainer.load(milestone)
-
-        trainer.ema.ema_model.eval()
-
-        (h, w), channels = trainer.ema.ema_model.image_size, trainer.ema.ema_model.channels
+        (h, w), channels = ema.ema_model.image_size, ema.ema_model.channels
 
         with torch.inference_mode():
-            batches = num_to_groups(trainer.num_samples, trainer.batch_size)
+            batches = num_to_groups(num_samples, batch_size)
             if ddim_sampling:
-                all_images_list = list(map(lambda n: trainer.ema.ema_model.ddim_sample((n, channels, h, w), sampling_timesteps = ddim_sampling_timesteps, return_all_timesteps = False), batches))     # if ddim
+                all_images_list = list(map(lambda n: ema.ema_model.ddim_sample((n, channels, h, w), sampling_timesteps = ddim_sampling_timesteps, return_all_timesteps = False), batches))     # if ddim
             else:
-                all_images_list = list(map(lambda n: trainer.ema.ema_model.sample(batch_size=n), batches))    
-
+                all_images_list = list(map(lambda n: ema.ema_model.sample(batch_size=n), batches))    
+           
         all_images = torch.cat(all_images_list, dim = 0)
+        utils.save_image(all_images, str(generation_results_folder / f'sample-{milestone}.png'), nrow = int(math.sqrt(num_samples)))
 
-        utils.save_image(all_images, str(ddim_results_folder / f'sample-{milestone}.png'), nrow = int(math.sqrt(trainer.num_samples)))
 
         # Log generated samples to TensorBoard
         # Assuming all_images is in [C, H, W] format per sample (batched as [B, C, H, W])
-        writer.add_images("Samples", all_images, trainer.step, dataformats="NCHW")
+        writer.add_images("Samples", all_images, step, dataformats="NCHW")
 
-        # Generate num_fid_samples 
-        accelerator.print(f"Generating {trainer.fid_scorer.n_samples} sample for calculating FID and IS.")
-        all_fake_samples_list = [] 
-        with torch.inference_mode():
-            batches = num_to_groups(trainer.fid_scorer.n_samples, trainer.batch_size)
-            for batch in tqdm(batches):
-                # Generate a batch of images.
-                if ddim_sampling:
-                    fake_samples =  trainer.ema.ema_model.ddim_sample((batch, channels, h, w), sampling_timesteps = ddim_sampling_timesteps, return_all_timesteps = False).to(trainer.device)     # if ddim
-                else:
-                    fake_samples =  trainer.ema.ema_model.sample(batch_size=batch).to(trainer.device)    
+        if calculate_fid or calculate_is:
+            # Generate num_fid_samples 
+            print(f"Generating {num_fid_samples} sample for calculating FID and IS.")
+            all_fake_samples_list = [] 
+            with torch.inference_mode():
+                batches = num_to_groups(num_fid_samples, batch_size)
+                for batch in tqdm(batches):
+                    # Generate a batch of images.
+                    if ddim_sampling:
+                        fake_samples =  ema.ema_model.ddim_sample((batch, channels, h, w), sampling_timesteps = ddim_sampling_timesteps, return_all_timesteps = False).to(device)     # if ddim
+                    else:
+                        fake_samples =  ema.ema_model.sample(batch_size=batch).to(device)    
 
-                all_fake_samples_list.append(fake_samples)
+                    all_fake_samples_list.append(fake_samples)
 
-        all_fake_samples = torch.cat(all_fake_samples_list, dim=0)
+            all_fake_samples = torch.cat(all_fake_samples_list, dim=0)
 
         # whether to calculate fid
-        if trainer.calculate_fid:
-            fid_score = trainer.fid_scorer.fid_score(all_fake_samples)
-            accelerator.print(f'FID score: {fid_score}')
-            writer.add_scalar("Eval/FID", fid_score, trainer.step)
+        if calculate_fid:
+            fid_scorer = FIDEvaluation(
+                    batch_size=batch_size,
+                    dl=dl,
+                    sampler=ema.ema_model,
+                    channels=diffusion.channels,
+                    stats_dir=trained_models_folder,
+                    device=device,
+                    num_fid_samples=num_fid_samples,
+                    inception_block_idx=inception_block_idx
+                )
+
+            fid_score = fid_scorer.fid_score(all_fake_samples)
+            print(f'FID score: {fid_score}')
+            writer.add_scalar("Eval/FID", fid_score, step)
 
         # whether to calculate IS
-        if trainer.calculate_is:
-            is_score = trainer.is_scorer.calculate_inception_score(all_fake_samples)
-            trainer.accelerator.print(f'Inception Score: {is_score:.4f}')
-            writer.add_scalar("Eval/IS", is_score, trainer.step)
+        if calculate_is:
+            is_scorer = InceptionScoreEvaluation(
+                batch_size=batch_size,
+                sampler=ema.ema_model,
+                channels=diffusion.channels,
+                stats_dir=trained_models_folder,
+                device=device,
+                num_samples=num_fid_samples  # Use same count as FID for consistency
+            )
+
+            is_score = is_scorer.calculate_inception_score(all_fake_samples)
+            print(f'Inception Score: {is_score:.4f}')
+            writer.add_scalar("Eval/IS", is_score, step)
