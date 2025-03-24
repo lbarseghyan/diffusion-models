@@ -27,14 +27,15 @@ diffusion = GaussianDiffusion(
     timesteps = 1000,           # number of steps
 )
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ema_decay = 0.995
 ema_update_every = 10
 ema = EMA(diffusion, beta = ema_decay, update_every = ema_update_every)
+ema.to(device)
 
 num_samples = 25
 batch_size = 64
-device = 'cpu'
 inception_block_idx =2048  #from trainer
 image_size = 32            #from trainer
 training_images_folder = '../data/cifar-10/train_images'
@@ -142,7 +143,7 @@ if __name__ == '__main__':
             dl = DataLoader(ds, batch_size = batch_size, shuffle = True, pin_memory = True, num_workers = cpu_count())
             dl = cycle(dl)
 
-    for milestone in milestones: 
+    for milestone in tqdm(milestones): 
         data = torch.load(str(Path(trained_models_folder) / f'model-{milestone}.pt'), map_location=device, weights_only=True)
         ema.load_state_dict(data["ema"])
         ema.ema_model.eval()
