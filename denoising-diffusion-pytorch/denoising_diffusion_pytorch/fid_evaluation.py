@@ -117,10 +117,17 @@ class FIDEvaluation:
             self.load_or_precalc_dataset_stats()
         self.sampler.eval()
 
-        # Compute inception features for the provided fake samples.
-        fake_features = self.calculate_inception_features(fake_samples)
-        fake_features = fake_features.cpu().numpy()
-        m1 = np.mean(fake_features, axis=0)
-        s1 = np.cov(fake_features, rowvar=False)
+        stacked_fake_features = []
+        self.print_fn(
+             f"Stacking Inception features for {self.n_samples} generated samples."
+        )
+        for i in range(0, len(fake_samples), self.batch_size):
+            fake_samples_batch = fake_samples[i:i+self.batch_size]
+            # Compute inception features for the provided fake samples.
+            fake_features = self.calculate_inception_features(fake_samples_batch)
+            stacked_fake_features.append(fake_features)
+        stacked_fake_features = torch.cat(stacked_fake_features, dim=0).cpu().numpy()
+        m1 = np.mean(stacked_fake_features, axis=0)
+        s1 = np.cov(stacked_fake_features, rowvar=False)
 
         return calculate_frechet_distance(m1, s1, self.m2, self.s2)
