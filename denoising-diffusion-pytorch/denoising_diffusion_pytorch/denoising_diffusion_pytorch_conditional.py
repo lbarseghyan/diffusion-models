@@ -717,7 +717,7 @@ class GaussianDiffusion(Module):
         ret = self.unnormalize(ret)
 
         if return_condition_image:
-            return (ret, cond)
+            return (cond, ret)
         
         return ret
     
@@ -1250,7 +1250,7 @@ class Trainer:
                         with torch.inference_mode():
                             milestone = self.step // self.save_and_sample_every
                             batches = num_to_groups(self.num_samples, self.batch_size)
-                            all_images_list = list(map(lambda n: torch.cat(self.ema.ema_model.sample(batch_size=n, return_condition_image=True), dim=2), batches))    # change
+                            all_images_list = list(map(lambda n: torch.cat(self.ema.ema_model.sample(batch_size=n, return_condition_image=True), dim=3), batches))    # change
 
                         all_images = torch.cat(all_images_list, dim = 0)
 
