@@ -9,6 +9,8 @@ import json
 import os
 from datetime import datetime
 
+import random     # add
+
 import torch
 from torch import nn, einsum
 import torch.nn.functional as F
@@ -1091,7 +1093,7 @@ class Trainer:
 
         self.ds = Dataset(folder, self.image_size, augment_horizontal_flip = augment_horizontal_flip, convert_image_to = convert_image_to)
 
-        assert len(self.ds) >= 100, 'you should have at least 100 images in your folder. at least 10k images recommended'
+        # assert len(self.ds) >= 100, 'you should have at least 100 images in your folder. at least 10k images recommended'
 
         dl = DataLoader(self.ds, batch_size = train_batch_size, shuffle = True, pin_memory = True, num_workers = cpu_count())
 

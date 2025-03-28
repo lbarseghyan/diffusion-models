@@ -95,7 +95,7 @@ class TextConditionalDataset(Dataset):
         tokens = clip.tokenize([text]).to(self.device)
         with torch.no_grad():
             text_emb = self.model_clip.encode_text(tokens)
-        return text_emb  # shape: (1, 512) for ViT-B/32
+        return text_emb.cpu()  # shape: (1, 512) for ViT-B/32
 
     def __len__(self):
         return len(self.cond_paths)
@@ -127,7 +127,7 @@ class ConditionalTrainer(Trainer):
     """
     def __init__(self, diffusion, dataset, **kwargs):
         # We pass a dummy folder to the base Trainer (it won't be used)
-        super().__init__(diffusion, folder='../data/coco/train', **kwargs)
+        super().__init__(diffusion, folder='../data/coco_small/train', **kwargs)
         dl = DataLoader(dataset, batch_size =  self.batch_size, shuffle = True, pin_memory = True)
         dl = self.accelerator.prepare(dl)
         self.dl = cycle(dl)
@@ -137,8 +137,8 @@ class ConditionalTrainer(Trainer):
 #########################
 
 # Path to your edges2shoes dataset root folder.
-dataset_root = '../data/coco/train'
-image_size = 32  # You can change this based on your needs
+dataset_root = '../data/coco_small/train'
+image_size = 64  # You can change this based on your needs
 
 # Create dataset and dataloader.
 dataset = TextConditionalDataset(dataset_root, image_size=image_size)
@@ -166,12 +166,13 @@ diffusion = GaussianDiffusion(
 trainer = ConditionalTrainer(
     diffusion,
     dataset,
-    train_batch_size = 64,
+    train_batch_size = 16,
     train_lr = 2e-4,
     train_num_steps = 800000,
     calculate_fid = True,
     save_and_sample_every = 5000,
-    num_fid_samples = 1000
+    num_fid_samples = 10,
+    results_folder = f'./results/conditional_ddpm/coco/28-03-2025_{image_size}x{image_size}_overfit_2'
 )
 
 #########################
