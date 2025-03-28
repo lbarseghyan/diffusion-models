@@ -720,6 +720,7 @@ class GaussianDiffusion(Module):
             text_emb = get_text_embedding(text, model_clip)
             cond_text.append(text_emb)
             texts.append(text)
+
         # Stack into a tensor and move to the appropriate device
         cond_batch = torch.stack(cond_text, dim=0).to(device)
 
@@ -737,9 +738,14 @@ class GaussianDiffusion(Module):
         text_emb, texts = self.get_random_text_condition(batch, device)     # add
 
         if exists(save_path_for_text):
-            with open(save_path_for_text, 'w') as txt_file:
-                for text in texts:
-                    txt_file.write(text + "\n")    
+            if os.path.exists(save_path_for_text):
+                with open(save_path_for_text, 'a') as txt_file:  
+                    for text in texts:
+                        txt_file.write(text + "\n")
+            else:
+                with open(save_path_for_text, 'w') as txt_file:  
+                    for text in texts:
+                        txt_file.write(text + "\n") 
 
         x_start = None
 
