@@ -127,7 +127,7 @@ class ConditionalTrainer(Trainer):
     """
     def __init__(self, diffusion, dataset, **kwargs):
         # We pass a dummy folder to the base Trainer (it won't be used)
-        super().__init__(diffusion, folder='../data/coco_small/train', **kwargs)
+        super().__init__(diffusion, folder='../data/coco/train', **kwargs)
         dl = DataLoader(dataset, batch_size =  self.batch_size, shuffle = True, pin_memory = True)
         dl = self.accelerator.prepare(dl)
         self.dl = cycle(dl)
@@ -137,7 +137,7 @@ class ConditionalTrainer(Trainer):
 #########################
 
 # Path to your edges2shoes dataset root folder.
-dataset_root = '../data/coco_small/train'
+dataset_root = '../data/coco/train'
 image_size = 64  # You can change this based on your needs
 
 # Create dataset and dataloader.
@@ -170,9 +170,9 @@ trainer = ConditionalTrainer(
     train_lr = 2e-4,
     train_num_steps = 800000,
     calculate_fid = True,
-    save_and_sample_every = 5000,
-    num_fid_samples = 10,
-    results_folder = f'./results/conditional_ddpm/coco/28-03-2025_{image_size}x{image_size}_overfit_2'
+    save_and_sample_every = 10000,
+    num_fid_samples = 1000,
+    results_folder = f'./results/conditional_ddpm/coco/28-03-2025_{image_size}x{image_size}'
 )
 
 #########################
