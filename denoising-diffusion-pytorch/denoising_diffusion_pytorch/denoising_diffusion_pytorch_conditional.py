@@ -1261,16 +1261,17 @@ class Trainer:
                         writer.add_images("Samples", all_images, self.step, dataformats="NCHW")
 
                         # Generate num_fid_samples 
-                        accelerator.print(f"Generating {self.fid_scorer.n_samples} sample for calculating FID and IS.")
-                        all_fake_samples_list = [] 
-                        with torch.inference_mode():
-                            batches = num_to_groups(self.fid_scorer.n_samples, self.batch_size)
-                            for batch in tqdm(batches):
-                                # Generate a batch of images.
-                                fake_samples =  self.ema.ema_model.sample(batch_size=batch).to(self.device)
-                                all_fake_samples_list.append(fake_samples)
+                        if self.calculate_fid or self.calculate_is:
+                            accelerator.print(f"Generating {self.fid_scorer.n_samples} sample for calculating FID and IS.")
+                            all_fake_samples_list = [] 
+                            with torch.inference_mode():
+                                batches = num_to_groups(self.fid_scorer.n_samples, self.batch_size)
+                                for batch in tqdm(batches):
+                                    # Generate a batch of images.
+                                    fake_samples =  self.ema.ema_model.sample(batch_size=batch).to(self.device)
+                                    all_fake_samples_list.append(fake_samples)
 
-                        all_fake_samples = torch.cat(all_fake_samples_list, dim=0)
+                            all_fake_samples = torch.cat(all_fake_samples_list, dim=0)
 
                         # whether to calculate fid
                         if self.calculate_fid:
