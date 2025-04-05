@@ -15,10 +15,15 @@ from PIL import Image
 from tqdm.auto import tqdm
 from denoising_diffusion_pytorch.utils import *
 from denoising_diffusion_pytorch.denoising_diffusion_pytorch_text_conditional import Unet, GaussianDiffusion, Trainer
+import clip
 
+
+# Path to your edges2shoes dataset root folder.
+dataset_root = '../../data/coco/train'
+image_size = 64  # You can change this based on your needs
 
 #########################
-# Dataset for edges2shoes
+# Dataset for coco
 #########################
 
 class Dataset(Dataset):
@@ -54,8 +59,6 @@ class Dataset(Dataset):
         return self.transform(img)
 
 
-import clip
-
 class TextConditionalDataset(Dataset):
     """
     This dataset expects a folder structure:
@@ -64,19 +67,19 @@ class TextConditionalDataset(Dataset):
             target/     --> corresponding shoe images (e.g., "99_B.png")
     The pairing is done based on the numeric prefix (e.g., "99").
     """
-    def __init__(self, 
-                 root, 
+    def __init__(self,
+                 root,
                  image_size,
                  augment_horizontal_flip=False,
                  convert_image_to=None):
         self.root = Path(root)
         self.image_size = image_size
-        
+
         # Get list of condition images
         self.cond_folder = self.root / "condition"
         self.target_folder = self.root / "target"
         self.cond_paths = sorted(list(self.cond_folder.glob("*.*")))
-        
+
         # Define transform:
         maybe_convert_fn = partial(convert_image_to_fn, convert_image_to) if exists(convert_image_to) else nn.Identity()
 
@@ -89,7 +92,7 @@ class TextConditionalDataset(Dataset):
         ])
 
         self.device="cuda" if torch.cuda.is_available() else "cpu"
-        self.model_clip, self.preprocess = clip.load("ViT-B/32", device=self.device) 
+        self.model_clip, self.preprocess = clip.load("ViT-B/32", device=self.device)
 
     def get_text_embedding(self, text):
         tokens = clip.tokenize([text]).to(self.device)
@@ -99,15 +102,14 @@ class TextConditionalDataset(Dataset):
 
     def __len__(self):
         return len(self.cond_paths)
-    
+
     def __getitem__(self, index):
         # Get condition file path
         cond_path = self.cond_paths[index]
         # Extract numeric prefix to match with target image.
-        # Assuming condition image names like "99_A.png" and target "99_B.png"
         prefix = cond_path.stem.split(".")[0]
         target_path = self.target_folder / f"{prefix}.jpg"
-        
+
         # Load images
         with open(cond_path, 'r') as file:
             cond_text = file.read()
@@ -115,6 +117,7 @@ class TextConditionalDataset(Dataset):
         target_img = Image.open(target_path).convert("RGB")
         target = self.transform(target_img)
         return target, cond
+
 
 #########################
 # Custom Trainer for Conditional Training
@@ -127,7 +130,7 @@ class ConditionalTrainer(Trainer):
     """
     def __init__(self, diffusion, dataset, **kwargs):
         # We pass a dummy folder to the base Trainer (it won't be used)
-        super().__init__(diffusion, folder='../data/coco/train', **kwargs)
+        super().__init__(diffusion, folder=dataset_root, **kwargs)
         dl = DataLoader(dataset, batch_size =  self.batch_size, shuffle = True, pin_memory = True)
         dl = self.accelerator.prepare(dl)
         self.dl = cycle(dl)
@@ -136,13 +139,8 @@ class ConditionalTrainer(Trainer):
 # Hyperparameters and Setup
 #########################
 
-# Path to your edges2shoes dataset root folder.
-dataset_root = '../data/coco/train'
-image_size = 64  # You can change this based on your needs
-
 # Create dataset and dataloader.
 dataset = TextConditionalDataset(dataset_root, image_size=image_size)
-# train_loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=4, pin_memory=True)
 
 # Instantiate the conditional Unet.
 # Make sure to set cond_channels=3 for an RGB conditioning image.
@@ -169,10 +167,11 @@ trainer = ConditionalTrainer(
     train_batch_size = 16,
     train_lr = 2e-4,
     train_num_steps = 800000,
-    calculate_fid = True,
-    save_and_sample_every = 10000,
+    calculate_fid = False,
+    calculate_is=False,
+    save_and_sample_every =5000,
     num_fid_samples = 1000,
-    results_folder = f'./results/conditional_ddpm/coco/28-03-2025_{image_size}x{image_size}'
+    results_folder = f'./results/conditional_ddpm/coco/05-04-2025_{image_size}x{image_size}',
 )
 
 #########################
