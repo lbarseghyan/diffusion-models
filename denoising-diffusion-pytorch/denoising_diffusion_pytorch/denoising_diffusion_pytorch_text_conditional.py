@@ -649,8 +649,8 @@ class GaussianDiffusion(Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def model_predictions(self, x, t, text_emb=None, x_self_cond = None, clip_x_start = False, rederive_pred_noise = False):
-        model_output = self.model(x, t, text_emb=text_emb, x_self_cond=x_self_cond)
+    def model_predictions(self, x, t, text_emb = None, x_self_cond = None, clip_x_start = False, rederive_pred_noise = False):
+        model_output = self.model(x, t, text_emb = text_emb, x_self_cond=x_self_cond)
         maybe_clip = partial(torch.clamp, min = -1., max = 1.) if clip_x_start else identity
 
         if self.objective == 'pred_noise':
@@ -674,8 +674,8 @@ class GaussianDiffusion(Module):
 
         return ModelPrediction(pred_noise, x_start)
 
-    def p_mean_variance(self, x, t, text_emb=None, x_self_cond = None, clip_denoised = True):
-        preds = self.model_predictions(x, t, text_emb=text_emb, x_self_cond=x_self_cond)
+    def p_mean_variance(self, x, t, text_emb = None, x_self_cond = None, clip_denoised = True):
+        preds = self.model_predictions(x, t, text_emb = text_emb, x_self_cond=x_self_cond)
         x_start = preds.pred_x_start
 
         if clip_denoised:
@@ -685,10 +685,10 @@ class GaussianDiffusion(Module):
         return model_mean, posterior_variance, posterior_log_variance, x_start
 
     @torch.inference_mode()
-    def p_sample(self, x, t: int, text_emb=None, x_self_cond = None):
+    def p_sample(self, x, t: int, text_emb = None, x_self_cond = None):
         b, *_, device = *x.shape, self.device
         batched_times = torch.full((b,), t, device = device, dtype = torch.long)
-        model_mean, _, model_log_variance, x_start = self.p_mean_variance(x = x, t = batched_times, text_emb=text_emb, x_self_cond = x_self_cond, clip_denoised = True)
+        model_mean, _, model_log_variance, x_start = self.p_mean_variance(x = x, t = batched_times, text_emb = text_emb, x_self_cond = x_self_cond, clip_denoised = True)
         noise = torch.randn_like(x) if t > 0 else 0. # no noise if t == 0
         pred_img = model_mean + (0.5 * model_log_variance).exp() * noise
         return pred_img, x_start
@@ -886,7 +886,7 @@ class GaussianDiffusion(Module):
         return sample_fn((batch_size, channels, h, w), save_path_for_text, return_all_timesteps = return_all_timesteps)
 
     @torch.inference_mode()
-    def interpolate(self, x1, x2, t = None, text_emb=None, lam = 0.5):
+    def interpolate(self, x1, x2, t = None, text_emb = None, lam = 0.5):
         b, *_, device = *x1.shape, x1.device
         t = default(t, self.num_timesteps - 1)
 
@@ -923,7 +923,7 @@ class GaussianDiffusion(Module):
             extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
         )
 
-    def p_losses(self, x_start, t, text_emb=None, noise = None, offset_noise_strength = None):
+    def p_losses(self, x_start, t, text_emb = None, noise = None, offset_noise_strength = None):
         b, c, h, w = x_start.shape
 
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -947,12 +947,12 @@ class GaussianDiffusion(Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
-                x_self_cond = self.model_predictions(x, t, text_emb=text_emb).pred_x_start
+                x_self_cond = self.model_predictions(x, t, text_emb = text_emb).pred_x_start
                 x_self_cond.detach_()
 
         # predict and take gradient step
 
-        model_out = self.model(x, t, text_emb=text_emb, x_self_cond=x_self_cond)
+        model_out = self.model(x, t, text_emb = text_emb, x_self_cond=x_self_cond)
 
         if self.objective == 'pred_noise':
             target = noise
@@ -972,7 +972,7 @@ class GaussianDiffusion(Module):
 
         if self.hybrid_loss:
             # Get the model's reverse distribution parameters:
-            model_mean, _, model_log_variance, _ = self.p_mean_variance(x=x, t=t, text_emb=text_emb, x_self_cond=x_self_cond, clip_denoised=True)
+            model_mean, _, model_log_variance, _ = self.p_mean_variance(x=x, t=t, text_emb = text_emb, x_self_cond=x_self_cond, clip_denoised=True)
 
             # Get the true posterior parameters:
             posterior_mean, posterior_variance, posterior_log_variance_clipped = self.q_posterior(x_start, x, t)
@@ -994,13 +994,13 @@ class GaussianDiffusion(Module):
         return loss.mean()
 
 
-    def forward(self, img, text_emb=None, *args, **kwargs):
+    def forward(self, img, text_emb = None, *args, **kwargs):
         b, c, h, w, device, img_size, = *img.shape, img.device, self.image_size
         assert h == img_size[0] and w == img_size[1], f'height and width of image must be {img_size}'
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
         img = self.normalize(img)
-        return self.p_losses(img, t, text_emb=text_emb, *args, **kwargs)
+        return self.p_losses(img, t, text_emb = text_emb, *args, **kwargs)
 
 # dataset classes
 
