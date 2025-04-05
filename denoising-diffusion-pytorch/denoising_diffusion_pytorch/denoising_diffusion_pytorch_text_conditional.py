@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 
 import random     # add
+import pickle
 
 import torch
 from torch import nn, einsum
@@ -484,6 +485,7 @@ class GaussianDiffusion(Module):
         model,
         *,
         image_size,
+        embedding_file,
         timesteps = 1000,
         sampling_timesteps = None,
         objective = 'pred_noise',    # 'pred_v',
@@ -497,7 +499,6 @@ class GaussianDiffusion(Module):
         immiscible = False,
         ddpm = True,                  # +
         hybrid_loss = False,          # From Improved DDPM
-        condition_text_folder
     ):
         super().__init__()
         assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
@@ -610,8 +611,9 @@ class GaussianDiffusion(Module):
 
         self.hybrid_loss = hybrid_loss
 
-        self.condition_text_folder = condition_text_folder  # change
-
+        assert os.path.exists(embedding_file), f'The embeddings file does not exist. Before starting the training precompute embeddings.'
+        self.embedding_file = embedding_file
+        
     @property
     def device(self):
         return self.betas.device
@@ -697,42 +699,49 @@ class GaussianDiffusion(Module):
     # add
     def get_random_text_condition(self, batch, device):
         """
-        Randomly sample a batch of condition texts from the training condition folder.
-        Assumes that self.training_condition_text_folder is set to the folder path.
+        Randomly sample a batch of text embeddings and their corresponding captions from the precomputed embeddings.
+        Assumes that self.precomputed_embeddings is stored in a pickle file,
+        where keys are the base filenames and values are dictionaries with:
+          - 'captions': a list of strings
+          - 'embeddings': a numpy array of shape (num_captions, embedding_dim)
+
+        Returns:
+            cond_batch: a tensor of shape (batch, embedding_dim)
+            texts: a list of strings corresponding to the selected captions
         """
-        def get_text_embedding(text, model_clip):
-            tokens = clip.tokenize([text]).to(device)
-            with torch.no_grad():
-                text_emb = model_clip.encode_text(tokens)
-            return text_emb  # shape: (1, 512) for ViT-B/32
+        with open(self.embedding_file, "rb") as f:
+            precomputed_embeddings = pickle.load(f)
+        print(f"Loaded precomputed embeddings from {self.embedding_file}")
 
-
-        # List all text in the training condition folder
-        condition_folder = Path(self.condition_text_folder)
-        condition_paths = list(condition_folder.glob("*.*"))
-        # Randomly choose 'batch' number of text
-        selected_paths = random.choices(condition_paths, k = batch)
-
-        model_clip, preprocess = clip.load("ViT-B/32", device=device)
-
-        cond_text = []
+        # Get all keys available in the precomputed embeddings dictionary.
+        keys = list(precomputed_embeddings.keys())
+        
+        # Randomly sample 'batch' number of keys.
+        selected_keys = random.choices(keys, k=batch)
+        
+        cond_embeddings = []
         texts = []
-        for p in selected_paths:
-            with open(p, 'r') as file:
-                text = file.read()
-            text_emb = get_text_embedding(text, model_clip)
-            cond_text.append(text_emb)
-            texts.append(text)
-
-        # Stack into a tensor and move to the appropriate device
-        # cond_batch = torch.stack(cond_text, dim=0).to(device)
-
-        cond_batch = torch.stack(cond_text, dim=0).squeeze(1).to(device)
-
-
-        # cond_img = Image.open(selected_path).convert("RGB")
-        # cond_img = self.cond_transform(cond_img)
+        
+        for key in selected_keys:
+            # Retrieve both captions and embeddings for the current key.
+            data = precomputed_embeddings[key]
+            embeddings_array = data["embeddings"]  # shape: (num_captions, embedding_dim)
+            captions = data["captions"]              # list of captions
+            num_captions = embeddings_array.shape[0]
+            
+            # Randomly select one caption embedding.
+            chosen_index = random.randint(0, num_captions - 1)
+            chosen_embedding = embeddings_array[chosen_index]
+            chosen_caption = captions[chosen_index]
+            
+            # Convert the numpy array to a torch tensor.
+            cond_embeddings.append(torch.tensor(chosen_embedding, dtype=torch.float))
+            texts.append(chosen_caption)
+        
+        # Stack the embeddings into a tensor of shape (batch, embedding_dim) and move to the correct device.
+        cond_batch = torch.stack(cond_embeddings, dim=0).to(device)
         return cond_batch, texts
+
 
     @torch.inference_mode()
     def p_sample_loop(self, shape, save_path_for_text=None, return_all_timesteps = False):
