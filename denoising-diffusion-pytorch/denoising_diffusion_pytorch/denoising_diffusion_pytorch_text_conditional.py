@@ -258,7 +258,7 @@ class Unet(Module):
         out_dim = None,
         dim_mults = (1, 2, 4, 8),
         channels = 3,
-        text_condition = False,         # <-- new flag for text conditioning
+        text_condition = True,         # <-- new flag for text conditioning
         text_emb_dim = 512,             # <-- expected dimension of text embeddings
         self_condition = False,
         learned_variance = False,
@@ -396,6 +396,9 @@ class Unet(Module):
         # --- New: If text conditioning is enabled and text_emb is provided, --- add
         # project text_emb, concatenate with t, then reproject.
         if self.text_condition and exists(text_emb):
+            if text_emb.dim() == 3 and text_emb.size(1) == 1:
+                text_emb = text_emb.squeeze(1)
+            text_emb = text_emb.to(t.dtype)  # Ensure text_emb is in the same dtype as t
             text_features = self.text_proj(text_emb)  # shape: (batch, time_dim)
             combined = torch.cat((t, text_features), dim=1)  # shape: (batch, 2*time_dim)
             t = self.text_concat_proj(combined)  # shape: (batch, time_dim)
@@ -722,7 +725,10 @@ class GaussianDiffusion(Module):
             texts.append(text)
 
         # Stack into a tensor and move to the appropriate device
-        cond_batch = torch.stack(cond_text, dim=0).to(device)
+        # cond_batch = torch.stack(cond_text, dim=0).to(device)
+
+        cond_batch = torch.stack(cond_text, dim=0).squeeze(1).to(device)
+
 
         # cond_img = Image.open(selected_path).convert("RGB")
         # cond_img = self.cond_transform(cond_img)
