@@ -87,6 +87,17 @@ class RMSNorm(Module):
     def forward(self, x):
         return F.normalize(x, dim = 1) * self.g * self.scale
 
+class RMSNorm1D(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.scale = dim ** 0.5
+        # For 2D/3D input, we want a parameter of shape (1, dim)
+        self.g = nn.Parameter(torch.ones(1, dim))
+        
+    def forward(self, x):
+        # x is expected to be of shape (batch, n, dim) or (batch, dim)
+        return F.normalize(x, dim=-1) * self.g * self.scale
+
 # sinusoidal positional embeds
 
 class SinusoidalPosEmb(Module):
@@ -249,6 +260,52 @@ class Attention(Module):
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
 
+################### New: Cross-Attention Module ####################
+
+class CrossAttention(nn.Module):
+    def __init__(self, dim, context_dim, heads=4, dim_head=32):
+        super().__init__()
+        self.heads = heads
+        inner_dim = heads * dim_head
+        self.scale = dim_head ** -0.5
+        
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            RMSNorm1D(dim)
+        )
+        
+    def forward(self, x, context):
+        # x: image features (batch, n, dim)
+        # context: text tokens (batch, m, context_dim) or (batch, context_dim)
+        if context.ndim == 2:
+            context = context.unsqueeze(1)  # convert (batch, context_dim) -> (batch, 1, context_dim)
+            
+        b, n, _ = x.shape
+        b, m, _ = context.shape
+        
+        q = self.to_q(x)   # (b, n, inner_dim)
+        k = self.to_k(context)   # (b, m, inner_dim)
+        v = self.to_v(context)   # (b, m, inner_dim)
+        
+        # reshape for multi-head attention
+        q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
+        k = rearrange(k, 'b m (h d) -> b h m d', h=self.heads)
+        v = rearrange(v, 'b m (h d) -> b h m d', h=self.heads)
+        
+        # scaled dot-product attention
+        attn_scores = torch.einsum('b h n d, b h m d -> b h n m', q, k) * self.scale
+        attn = attn_scores.softmax(dim=-1)
+        
+        out = torch.einsum('b h n m, b h m d -> b h n d', attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+############################################################################
+  
 # model
 
 class Unet(Module):
@@ -261,6 +318,7 @@ class Unet(Module):
         channels = 3,
         text_condition = True,         # <-- new flag for text conditioning
         text_emb_dim = 512,             # <-- expected dimension of text embeddings
+        use_cross_attn = False,
         self_condition = False,
         learned_variance = False,
         learned_sinusoidal_cond = False,
@@ -280,8 +338,9 @@ class Unet(Module):
         self.channels = channels
         self.self_condition = self_condition
         self.text_condition = text_condition  # save text conditioning flag
-        input_channels = channels * (2 if self_condition else 1)
+        self.use_cross_attn = use_cross_attn  # choose which text conditioning approach to use
 
+        input_channels = channels * (2 if self_condition else 1)
         init_dim = default(init_dim, dim)
         self.init_conv = nn.Conv2d(input_channels, init_dim, 7, padding = 3)
 
@@ -308,8 +367,9 @@ class Unet(Module):
             nn.Linear(time_dim, time_dim)
         )
 
-        # --- New: text conditioning projection --- add
-        if self.text_condition:
+        # --- For text conditioning using concatenation ---
+        # These layers will be used if use_cross_attn is False.
+        if self.text_condition and not self.use_cross_attn:
             # Project the text embedding (expected to be of dim=text_emb_dim) to time_dim.
             self.text_proj = nn.Sequential(
                 nn.Linear(text_emb_dim, time_dim),
@@ -318,6 +378,12 @@ class Unet(Module):
             )
             # After concatenation of time and text features, project back to time_dim.
             self.text_concat_proj = nn.Linear(time_dim * 2, time_dim)
+
+        # --- For text conditioning using cross-attention ---
+        # These layers will be used if use_cross_attn is True.
+        if self.text_condition and self.use_cross_attn:
+            # self.cross_attn = CrossAttention(dim=time_dim, context_dim=text_emb_dim, heads=4, dim_head=attn_dim_head)
+            self.cross_attn = CrossAttention(dim=dims[-1], context_dim=text_emb_dim, heads=4, dim_head=attn_dim_head)
 
 
         # attention
@@ -394,9 +460,9 @@ class Unet(Module):
 
         t = self.time_mlp(time)
 
-        # --- New: If text conditioning is enabled and text_emb is provided, --- add
-        # project text_emb, concatenate with t, then reproject.
-        if self.text_condition and exists(text_emb):
+
+        # --- Apply concatenation-based text conditioning if selected ---
+        if self.text_condition and exists(text_emb) and (not self.use_cross_attn):
             if text_emb.dim() == 3 and text_emb.size(1) == 1:
                 text_emb = text_emb.squeeze(1)
             text_emb = text_emb.to(t.dtype)  # Ensure text_emb is in the same dtype as t
@@ -418,6 +484,15 @@ class Unet(Module):
             x = downsample(x)
 
         x = self.mid_block1(x, t)
+
+        # --- Apply cross-attention-based text conditioning if selected ---
+        if self.text_condition and exists(text_emb) and self.use_cross_attn:
+            # Here, text_emb should be of shape (batch, token_len, text_emb_dim)
+            b, c, h_sp, w_sp = x.shape
+            x_flat = x.view(b, c, h_sp * w_sp).permute(0, 2, 1)  # (b, n, c)
+            x_flat = self.cross_attn(x_flat, text_emb)            # (b, n, c)
+            x = x_flat.permute(0, 2, 1).view(b, c, h_sp, w_sp)
+            
         x = self.mid_attn(x) + x
         x = self.mid_block2(x, t)
 
