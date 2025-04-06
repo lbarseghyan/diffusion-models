@@ -827,15 +827,12 @@ class GaussianDiffusion(Module):
 
         text_emb, texts = self.get_random_text_condition(batch, device)     # add
 
+        # Save the corresponding captions if a path is provided.
         if exists(save_path_for_text):
-            if os.path.exists(save_path_for_text):
-                with open(save_path_for_text, 'a') as txt_file:  
-                    for text in texts:
-                        txt_file.write(text + "\n")
-            else:
-                with open(save_path_for_text, 'w') as txt_file:  
-                    for text in texts:
-                        txt_file.write(text + "\n") 
+            mode = 'a' if os.path.exists(save_path_for_text) else 'w'
+            with open(save_path_for_text, mode) as txt_file:
+                for text in texts:
+                    txt_file.write(text + "\n")
 
         x_start = None
 
@@ -851,7 +848,8 @@ class GaussianDiffusion(Module):
         return ret
 
     @torch.inference_mode()
-    def ddim_sample(self, shape, sampling_timesteps=None, return_all_timesteps = False):
+    def ddim_sample(self, shape, save_path_for_text = None, sampling_timesteps = None, return_all_timesteps = False):
+    
         if sampling_timesteps is None:
             sampling_timesteps = self.sampling_timesteps
         batch, device, total_timesteps, eta, objective = shape[0], self.device, self.num_timesteps, self.ddim_sampling_eta, self.objective
@@ -863,12 +861,21 @@ class GaussianDiffusion(Module):
         img = torch.randn(shape, device = device)
         imgs = [img]
 
+        text_emb, texts = self.get_random_text_condition(batch, device)
+
+        # Save the corresponding captions if a path is provided.
+        if exists(save_path_for_text):
+            mode = 'a' if os.path.exists(save_path_for_text) else 'w'
+            with open(save_path_for_text, mode) as txt_file:
+                for text in texts:
+                    txt_file.write(text + "\n")
+
         x_start = None
 
         for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
             time_cond = torch.full((batch,), time, device = device, dtype = torch.long)
             self_cond = x_start if self.self_condition else None
-            pred_noise, x_start, *_ = self.model_predictions(img, time_cond, self_cond, clip_x_start = True, rederive_pred_noise = True)
+            pred_noise, x_start, *_ = self.model_predictions(img, time_cond, text_emb = text_emb, x_self_cond = self_cond, clip_x_start = True, rederive_pred_noise = True)
 
             if time_next < 0:
                 img = x_start
@@ -894,75 +901,6 @@ class GaussianDiffusion(Module):
         ret = self.unnormalize(ret)
         return ret
     
-    @torch.inference_mode()
-    def ddim_sample_guided(self, shape, sampling_timesteps=None, guide=None, mask=None, clip_denoised = True):
-        import matplotlib.pyplot as plt
-        if sampling_timesteps is None:
-            sampling_timesteps = self.sampling_timesteps
-        batch, device, total_timesteps, eta, objective = shape[0], self.betas.device, self.num_timesteps, self.ddim_sampling_eta, self.objective
-
-        times = torch.linspace(-1, total_timesteps - 1, steps=sampling_timesteps + 1)   # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
-        times = list(reversed(times.int().tolist()))
-        time_pairs = list(zip(times[:-1], times[1:])) # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
-
-        img = torch.randn(shape, device = device)
-        
-        x_start = None
-
-        for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
-            time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
-            self_cond = x_start if self.self_condition else None
-            pred_noise, x_start, *_ = self.model_predictions(img, time_cond, self_cond, clip_x_start = clip_denoised)
-
-            if time_next < 0:
-                img = x_start
-                continue
-
-            alpha = self.alphas_cumprod[time]
-            alpha_next = self.alphas_cumprod[time_next]
-
-            sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
-            c = (1 - alpha_next - sigma ** 2).sqrt()
-
-            noise = torch.randn_like(img)
-
-            img = x_start * alpha_next.sqrt() + \
-                  c * pred_noise + \
-                  sigma * noise
-
-            # here use the guidance
-            if guide is not None:
-                img_disp = unnormalize_to_zero_to_one(img).detach().cpu()
-                
-                time_next_cond = torch.full((batch,), time, device=device, dtype=torch.long)
-                guide_t_1 = self.q_sample(guide, time_next_cond)
-                img = img * mask + guide_t_1 * (1 - mask)
-
-                guide_disp = unnormalize_to_zero_to_one(guide_t_1).detach().cpu()
-                img_after_guide_disp = unnormalize_to_zero_to_one(img).detach().cpu()
-
-
-                plt.figure(figsize=(12, 5))
-                plt.subplot(1, 3, 1)
-                plt.title(f"img at time {time}", fontsize=10)
-                plt.imshow(img_disp[0].permute(1, 2, 0).numpy())
-                plt.axis('off')
-                
-                plt.subplot(1, 3, 2)
-                plt.title(f"Guide t+1 at time {time}", fontsize=10)
-                plt.imshow(guide_disp[0].permute(1, 2, 0).numpy())
-                plt.axis('off')
-
-                plt.subplot(1, 3, 3)
-                plt.title(f"img after guide at time {time}", fontsize=10)
-                plt.imshow(img_after_guide_disp[0].permute(1, 2, 0).numpy())
-                plt.axis('off')
-                plt.show()
-               
-
-        img = unnormalize_to_zero_to_one(img)
-        return img
-
     @torch.inference_mode()
     def sample(self, batch_size = 16, save_path_for_text=None, return_all_timesteps = False):
         (h, w), channels = self.image_size, self.channels
