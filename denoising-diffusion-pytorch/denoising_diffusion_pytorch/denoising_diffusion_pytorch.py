@@ -941,6 +941,7 @@ class Trainer:
         diffusion_model,
         folder,
         *,
+        image_size = None,
         train_batch_size = 16,
         gradient_accumulate_every = 1,
         augment_horizontal_flip = True,
@@ -994,7 +995,11 @@ class Trainer:
         assert (train_batch_size * gradient_accumulate_every) >= 16, f'your effective batch size (train_batch_size x gradient_accumulate_every) should be at least 16 or above'
 
         self.train_num_steps = train_num_steps
-        self.image_size = diffusion_model.image_size
+        
+        if not exists(image_size):
+            self.image_size = diffusion_model.image_size
+        else:
+            self.image_size = image_size
 
         self.max_grad_norm = max_grad_norm
 
