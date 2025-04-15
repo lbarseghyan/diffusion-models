@@ -48,8 +48,8 @@ transform = transforms.Compose([
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
 ])
 
-train_dataset = ImageFolderDataset(folder='../data/cifar_small/train_images', transform=transform)
-val_dataset = ImageFolderDataset(folder='../data/cifar_small/test_images', transform=transform)
+train_dataset = ImageFolderDataset(folder='../data/cifar-10/train_images', transform=transform)
+val_dataset = ImageFolderDataset(folder='../data/cifar-10/test_images', transform=transform)
 
 batch_size = 128
 num_workers = 4
@@ -181,10 +181,10 @@ class SampleCallback(Callback):
 #########################################
 
 # Save every n epochs (for example, n = 5)
-n = 5
+n = 10
 
 checkpoint_callback = ModelCheckpoint(
-    dirpath="results/VAE/checkpoints/",
+    dirpath="results/VAE/cifar_10/checkpoints",
     filename="model_epoch{epoch:02d}",
     every_n_epochs=n,
     save_top_k=-1,  # save all checkpoints created at these intervals
@@ -192,7 +192,7 @@ checkpoint_callback = ModelCheckpoint(
 
 sample_callback = SampleCallback(
     every_n_epochs=n,
-    sample_dir="results/VAE/samples"
+    sample_dir='results/VAE/cifar_10/samples'
 )
 
 
@@ -215,4 +215,8 @@ trainer = pl.Trainer(
 ########################
 if __name__ == '__main__':
     pl.seed_everything(42)
-    trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+    trainer.fit(model, 
+                train_dataloaders=train_loader, 
+                val_dataloaders=val_loader,
+                # ckpt_path = "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10_overfit/checkpoints/model_epochepoch=10209.ckpt"
+                )
