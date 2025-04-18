@@ -45,7 +45,7 @@ vae = VQModel(
 vae.learning_rate = base_learning_rate
 
 # 3. Load the checkpoint
-checkpoint_path = "/home/user1809/Desktop/vae_checkpoint/model_epochepoch=9999.ckpt"  # update with your checkpoint path
+checkpoint_path = "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10/checkpoints/model_epochepoch=529.ckpt"  # update with your checkpoint path
 checkpoint = torch.load(checkpoint_path, map_location="cpu")
 # For Lightning checkpoints you might have "state_dict" key
 if "state_dict" in checkpoint:
@@ -65,7 +65,7 @@ from denoising_diffusion_pytorch.utils import *
 from denoising_diffusion_pytorch.denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
 
 # Path to your edges2shoes dataset root folder.
-dataset_root = '../data/cifar_small/train_images'
+dataset_root = '../data/cifar-10/train_images'
 image_size = 32  # You can change this based on your needs
 
 model = Unet(
@@ -96,9 +96,9 @@ trainer = Trainer(
     train_lr = 2e-4,
     train_num_steps = 1000000,           
     # calculate_fid = True,              
-    save_and_sample_every = 2500,
+    save_and_sample_every = 5000,
     num_fid_samples = 1000,         
-    results_folder='results/ldm/cifar_10_overfit',
+    results_folder='results/ldm/cifar_10',
     calculate_is=False,
     calculate_fid=False        
 )
