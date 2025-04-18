@@ -30,7 +30,6 @@ class LatentDiffusion(GaussianDiffusion):
             param.requires_grad = False
 
 
-
     def encode(self, images: torch.Tensor) -> torch.Tensor:
         """Encode images to latent space using the VAE encoder."""
         with torch.no_grad():
@@ -40,11 +39,13 @@ class LatentDiffusion(GaussianDiffusion):
                 latents = latents[0]
         return latents
 
+
     def decode(self, latents: torch.Tensor) -> torch.Tensor:
         """Decode latent representations back to image space using the VAE decoder."""
         with torch.no_grad():
             images = self.vae.decode(latents)
         return images
+
 
     def forward(self, real_images: torch.Tensor) -> torch.Tensor:
         """
@@ -57,22 +58,6 @@ class LatentDiffusion(GaussianDiffusion):
         # Use GaussianDiffusion's forward (or loss computation) on latents
         return super().forward(latents)
 
-    # def sample(self, batch_size: int = 1, device: torch.device = None) -> torch.Tensor:
-    #     """
-    #     Sample new images by running diffusion in latent space and decoding to image space.
-    #     :param batch_size: Number of images to sample.
-    #     :param device: Device to perform computation on.
-    #     :return: Generated images in pixel space (tensor).
-    #     """
-    #     device = device or next(self.parameters()).device
-    #     # Start from random noise in latent space
-    #     latent_shape = (batch_size, self.channels, self.image_size, self.image_size)
-    #     latents_noise = torch.randn(latent_shape, device=device)
-    #     # Use GaussianDiffusion's sampling in latent space
-    #     latents_generated = super().sample(latents_noise)
-    #     # Decode latents to image space
-    #     images_generated = self.decode(latents_generated)
-    #     return images_generated
 
     @torch.inference_mode()
     def sample(self, batch_size=16, return_all_timesteps=False):
@@ -85,17 +70,3 @@ class LatentDiffusion(GaussianDiffusion):
         latents = sample_fn((batch_size, channels, h, w), return_all_timesteps=return_all_timesteps)
         # Decode the latent codes back to pixel space using the VAE decoder
         return self.decode(latents)
-
-
-    # def train_step(self, real_images: torch.Tensor, optimizer: torch.optim.Optimizer) -> float:
-    #     """
-    #     Perform one training step on a batch of images.
-    #     Encodes images -> diffusion loss -> backprop -> update.
-    #     :return: The computed loss value.
-    #     """
-    #     self.train()  # set diffusion model to training mode (VAE is frozen)
-    #     optimizer.zero_grad()
-    #     loss = self(real_images)            # diffusion loss on latents
-    #     loss.backward()
-    #     optimizer.step()
-    #     return loss.item()

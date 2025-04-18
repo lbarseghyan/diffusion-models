@@ -15,4 +15,4 @@ latent-diffusion/ldm/modules/distributions/__pycache__/
 latent-diffusion/train_VAE_cifar_10_old.py
 captions_train2017.json
 taming/
-lightning_logs
+lightning_logs/
