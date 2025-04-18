@@ -22,8 +22,24 @@ from denoising_diffusion_pytorch.denoising_diffusion_pytorch_text_conditional im
 
 
 # Path to your coco dataset root folder.
-dataset_root = '../../data/coco/train'
+dataset_root = '../data/coco/train'
 image_size = 64  # You can change this based on your needs
+
+# Unet
+use_cross_attn = True
+
+# GaussianDiffusion
+sampling_timesteps = 250
+
+# ConditionalTrainer
+train_batch_size = 32
+train_num_steps = 600000
+calculate_fid = True
+calculate_is = True
+save_and_sample_every = 10000
+num_fid_samples = 1000
+results_folder = f'./results/conditional_ddpm/coco/18-04-2025_{image_size}x{image_size}_cross_attention_250_ddim_sampling'
+
 
 #########################
 # Dataset for coco
@@ -211,7 +227,8 @@ model = Unet(
     dropout = 0.1,
     channels = 3,
     self_condition = False, # disable self-conditioning when using external conditioning
-    text_condition = True
+    text_condition = True,
+    use_cross_attn = use_cross_attn
 )
 
 # Create the GaussianDiffusion wrapper.
@@ -219,6 +236,7 @@ diffusion = GaussianDiffusion(
     model,
     image_size = image_size,
     timesteps = 1000,           # number of diffusion steps
+    sampling_timesteps = sampling_timesteps,
     embedding_file = dataset.embedding_file
 )
 
@@ -226,14 +244,14 @@ diffusion = GaussianDiffusion(
 trainer = ConditionalTrainer(
     diffusion,
     dataset,
-    train_batch_size = 16,
+    train_batch_size = train_batch_size,
     train_lr = 2e-4,
-    train_num_steps = 800000,
-    calculate_fid = True,
-    calculate_is = True,
-    save_and_sample_every = 5000,
-    num_fid_samples = 1000,
-    results_folder = f'./results/conditional_ddpm/coco/05-04-2025_{image_size}x{image_size}',
+    train_num_steps = train_num_steps,
+    calculate_fid = calculate_fid,
+    calculate_is = calculate_is,
+    save_and_sample_every = save_and_sample_every,
+    num_fid_samples = num_fid_samples,
+    results_folder = results_folder,
 )
 
 #########################
