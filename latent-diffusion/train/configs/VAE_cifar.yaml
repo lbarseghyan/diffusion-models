@@ -1,6 +1,5 @@
-# config.yaml
-train_images_path: "../data/cifar-10/train_images"
-val_images_path: "../data/cifar-10/test_images"
+train_images_path: "../data/cifar-10/train_images"    # update with your dataset path
+val_images_path: "../data/cifar-10/test_images"       # update with your dataset path
 batch_size: 128
 num_workers: 4
 
@@ -9,16 +8,18 @@ filename: "model_{epoch}"
 samples_path: "results/VAE/cifar_10_32_to_16/samples"
 
 every_n_epochs: 10
-max_epochs: 1500000
+max_epochs: 150000
+
+# ─── VAE (VQModel) settings ───────────────────────────────────────────────────
 
 ddconfig:
   double_z: false
   z_channels: 3
-  resolution: 32
+  resolution: 32         # update with your image size 
   in_channels: 3
   out_ch: 3
   ch: 64
-  ch_mult: [1, 2]
+  ch_mult: [1, 2]        # update based on the desired latent size
   num_res_blocks: 2
   attn_resolutions: []
   dropout: 0.0

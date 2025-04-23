@@ -1,0 +1,49 @@
+# ─── VAE (VQModel) settings ───────────────────────────────────────────────────
+ddconfig:
+  double_z: false
+  z_channels: 3
+  resolution: 32
+  in_channels: 3
+  out_ch: 3
+  ch: 64
+  ch_mult: [1, 2, 4]
+  num_res_blocks: 2
+  attn_resolutions: []
+  dropout: 0.0
+
+lossconfig:
+  target: "taming.modules.losses.vqperceptual.VQLPIPSWithDiscriminator"
+  params:
+    disc_conditional: false
+    disc_in_channels: 3
+    disc_start: 0
+    disc_weight: 0.75
+    codebook_weight: 1.0
+
+embed_dim: 3
+n_embed: 8192
+base_learning_rate: 4.5e-06
+
+checkpoint_path: "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10/checkpoints/model_epochepoch=529.ckpt"  # update with your checkpoint path
+
+# ─── Diffusion settings ────────────────────────────────────────────────
+diffusion_timesteps: 1000
+
+# ─── UNet settings ────────────────────────────────────────────────────────────
+Unet_config:
+  dim: 64
+  dim_mults: [1, 2, 4, 8]
+  dropout: 0.1
+
+# ─── Trainer settings ─────────────────────────────────────────────────────────
+trainer_config:
+  dataset_root: "../data/cifar-10/train_images"    # update with your dataset path
+  image_size: 32
+  train_batch_size: 64
+  train_lr: 2e-4
+  train_num_steps: 800000
+  save_and_sample_every: 5000
+  num_fid_samples: 1000
+  results_folder: "results/ldm/cifar_10"
+  calculate_is: false
+  calculate_fid: false
