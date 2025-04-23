@@ -82,9 +82,7 @@ diffusion = LatentDiffusion(
 # ─── Trainer Setup ─────────────────────────────────────────────────────────
 
 trainer_cfg = cfg['trainer_config']
-print('\n ++++++++++++++')
-print(trainer_cfg)
-print('\n ++++++++++++++')
+
 
 trainer = Trainer(
     diffusion,
