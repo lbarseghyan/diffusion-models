@@ -10,6 +10,8 @@ samples_path: "results/VAE/cifar_10_32_to_16/samples"
 every_n_epochs: 10
 max_epochs: 150000
 
+ckpt_path: null
+
 # ─── VAE (VQModel) settings ───────────────────────────────────────────────────
 
 ddconfig:

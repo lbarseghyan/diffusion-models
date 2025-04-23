@@ -108,5 +108,4 @@ if __name__ == '__main__':
     trainer.fit(model, 
                 train_dataloaders=train_loader, 
                 val_dataloaders=val_loader,
-                # ckpt_path = "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10_32_to_16/checkpoints/model_epoch=259.ckpt"
-                )
+                ckpt_path = cfg['ckpt_path'])
