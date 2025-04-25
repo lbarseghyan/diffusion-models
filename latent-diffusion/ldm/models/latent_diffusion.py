@@ -3,6 +3,7 @@ import torch.nn as nn
 
 # Import the base GaussianDiffusion (DDPM) and VAE (VQModel) from the repository
 from denoising_diffusion_pytorch.denoising_diffusion_pytorch import GaussianDiffusion
+from denoising_diffusion_pytorch.utils import identity
 from ldm.models.autoencoder import VQModel  # VAE with .encode() and .decode() methods
 
 class LatentDiffusion(GaussianDiffusion):
@@ -23,6 +24,8 @@ class LatentDiffusion(GaussianDiffusion):
         self.latent_channels = latent_shape[0]  # Save latent channels if needed.
         # Optionally, you can override the model's channels attribute if required.
         self.model.channels = self.latent_channels
+        self.normalize = identity 
+        self.unnormalize = identity    
 
         # Freeze VAE parameters if not fine-tuning
         self.vae.eval()

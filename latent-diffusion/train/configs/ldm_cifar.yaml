@@ -6,7 +6,7 @@ ddconfig:
   in_channels: 3
   out_ch: 3
   ch: 64
-  ch_mult: [1, 2, 4]
+  ch_mult: [1, 2]
   num_res_blocks: 2
   attn_resolutions: []
   dropout: 0.0
@@ -24,7 +24,7 @@ embed_dim: 3
 n_embed: 8192
 base_learning_rate: 4.5e-06
 
-checkpoint_path: "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10/checkpoints/model_epochepoch=529.ckpt"  # update with your checkpoint path
+checkpoint_path: "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10_latent_16/checkpoints/model_epoch=279.ckpt"
 
 # ─── Diffusion settings ────────────────────────────────────────────────
 diffusion_timesteps: 1000
@@ -37,13 +37,13 @@ Unet_config:
 
 # ─── Trainer settings ─────────────────────────────────────────────────────────
 trainer_config:
-  dataset_root: "../data/cifar-10/train_images"    # update with your dataset path
+  dataset_root: "../data/cifar-10/train_images"    # update with your dataset path                
   image_size: 32
   train_batch_size: 64
   train_lr: 2e-4
   train_num_steps: 800000
   save_and_sample_every: 5000
   num_fid_samples: 1000
-  results_folder: "results/ldm/cifar_10"
-  calculate_is: false
-  calculate_fid: false
+  results_folder: "results/ldm/cifar_10_latent_16"
+  calculate_is: true
+  calculate_fid: true
