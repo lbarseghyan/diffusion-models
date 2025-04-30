@@ -1,0 +1,22 @@
+# --- Unet -------------------------------------------------
+unet:
+  dim: 64                 # base channel dimension
+  dim_mults: [1, 2, 4, 8] # each U-Net stage multiplier
+  dropout: 0.1            # dropout in residual blocks
+
+# --- Diffusion --------------------------------------------
+diffusion:
+  image_size: 32          # (H = W)
+  timesteps: 1000         # training steps in the noise scheduler
+
+# --- Trainer ----------------------------------------------
+trainer:
+  data_path: ../data/cifar-10/train_images
+  train_batch_size: 64
+  train_lr: 2e-4
+  train_num_steps: 800000           # gradient-steps, not diffusion timesteps
+  calculate_fid: true
+  calculate_is: true
+  save_and_sample_every: 500
+  num_fid_samples: 1000
+  results_folder: results/results_ddpm_config_test
