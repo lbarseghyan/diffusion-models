@@ -30,9 +30,10 @@ unet = Unet(
 
 diffusion_cfg = cfg['diffusion']
 diffusion = GaussianDiffusion(
-    model      = unet,
-    image_size = diffusion_cfg['image_size'],
-    timesteps  = diffusion_cfg['timesteps'],           # number of steps
+    model              = unet,
+    image_size         = diffusion_cfg['image_size'],
+    timesteps          = diffusion_cfg['timesteps'],           # number of steps
+    sampling_timesteps = diffusion_cfg['sampling_timesteps'],         
 )
 
 # ─── Trainer Setup ─────────────────────────────────────────────────────────

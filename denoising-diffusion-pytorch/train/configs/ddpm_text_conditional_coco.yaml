@@ -1,0 +1,31 @@
+# --- Dataset ---------------------------------------------
+dataset:
+  dataset_root: ../data/coco/train
+  image_size: 64
+
+# --- Unet -------------------------------------------------
+unet:
+  dim: 64                        # base channel dimension
+  dim_mults: [1, 2, 4, 8]        # each U-Net stage multiplier
+  dropout: 0.1                   # dropout in residual blocks
+  channels: 3
+  self_condition: false          # disable self-conditioning when using external conditioning
+  text_condition: true           
+  use_cross_attn: true           # if set to False, concatenation approach will be used
+
+# --- Diffusion --------------------------------------------
+diffusion:
+  image_size: 64                 # (H = W)
+  timesteps: 1000                # training steps in the noise scheduler
+  sampling_timesteps: 250        # if not None, DDIM sampling will be used
+
+# --- Trainer ----------------------------------------------
+trainer:
+  train_batch_size: 32
+  train_lr: 2e-4
+  train_num_steps: 600000        # gradient-steps, not diffusion timesteps
+  calculate_fid: true
+  calculate_is: true
+  save_and_sample_every: 500
+  num_fid_samples: 1000
+  results_folder: results/coco_test
