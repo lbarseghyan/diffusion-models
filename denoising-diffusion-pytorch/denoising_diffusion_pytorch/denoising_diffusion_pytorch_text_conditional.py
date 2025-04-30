@@ -384,6 +384,8 @@ class Unet(Module):
         if self.text_condition and self.use_cross_attn:
             # self.cross_attn = CrossAttention(dim=time_dim, context_dim=text_emb_dim, heads=4, dim_head=attn_dim_head)
             self.cross_attn = CrossAttention(dim=dims[-1], context_dim=text_emb_dim, heads=4, dim_head=attn_dim_head)
+            self.cross_attn_down = CrossAttention(dim=dims[-1], context_dim=text_emb_dim, heads=4, dim_head=attn_dim_head)
+            self.cross_attn_up = CrossAttention(dim=dims[-1], context_dim=text_emb_dim, heads=4, dim_head=attn_dim_head)
 
 
         # attention
@@ -483,6 +485,13 @@ class Unet(Module):
 
             x = downsample(x)
 
+        # NEW: apply cross-attention here, on the last feature map before bottleneck
+        if self.text_condition and exists(text_emb) and self.use_cross_attn:
+            b, c, h_sp, w_sp = x.shape
+            x_flat = x.view(b, c, h_sp * w_sp).permute(0, 2, 1)     # (b, n, c)
+            x_flat = self.cross_attn_down(x_flat, text_emb)        # (b, n, c)
+            x = x_flat.permute(0, 2, 1).view(b, c, h_sp, w_sp)
+
         x = self.mid_block1(x, t)
 
         # --- Apply cross-attention-based text conditioning if selected ---
@@ -495,6 +504,13 @@ class Unet(Module):
             
         x = self.mid_attn(x) + x
         x = self.mid_block2(x, t)
+
+        # NEW: apply cross-attention here, right after the bottleneck, before upsampling
+        if self.text_condition and exists(text_emb) and self.use_cross_attn:
+            b, c, h_sp, w_sp = x.shape
+            x_flat = x.view(b, c, h_sp * w_sp).permute(0, 2, 1)
+            x_flat = self.cross_attn_up(x_flat, text_emb)
+            x = x_flat.permute(0, 2, 1).view(b, c, h_sp, w_sp)
 
         for block1, block2, attn, upsample in self.ups:
             x = torch.cat((x, h.pop()), dim = 1)
