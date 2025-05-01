@@ -56,20 +56,8 @@ diffusion = GaussianDiffusion(
 
 # ─── Trainer Setup ─────────────────────────────────────────────────────────
 
-class ConditionalTrainer(Trainer):
-    """
-    Extend the Trainer to work with a DataLoader that returns (target, cond) tuples.
-    """
-    def __init__(self, diffusion_model, dataset, **kwargs):
-        # We pass a dummy folder to the base Trainer (it won't be used)
-        super().__init__(diffusion_model, folder=dataset_cfg['dataset_root'], **kwargs)
-        dl = DataLoader(dataset, batch_size =  self.batch_size, shuffle = True, pin_memory = True)
-        dl = self.accelerator.prepare(dl)
-        self.dl = cycle(dl)
-
-
 trainer_cfg = cfg['trainer']
-trainer = ConditionalTrainer(
+trainer = Trainer(
     diffusion_model       = diffusion,
     dataset               = dataset,
     train_batch_size      = trainer_cfg['train_batch_size'],
