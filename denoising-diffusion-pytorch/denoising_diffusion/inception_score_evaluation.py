@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torchvision.models import inception_v3
 from einops import repeat
 from tqdm.auto import tqdm
-from denoising_diffusion_pytorch.utils import num_to_groups
+from denoising_diffusion.utils import num_to_groups
 
 
 class InceptionScoreEvaluation:

@@ -2,28 +2,28 @@ import os
 import torch
 from torch import nn
 
-# Import the base GaussianDiffusion (DDPM) and VAE (VQModel) from the repository
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch_text_conditional import GaussianDiffusion
-from denoising_diffusion_pytorch.utils import identity
+# Import the base TextConditionalDenoisingDiffusion (DDPM) and VAE (VQModel) from the repository
+from denoising_diffusion.denoising_diffusion_text_conditional import TextConditionalDenoisingDiffusion
+from denoising_diffusion.utils import identity
 
 from ldm.models.autoencoder import VQModel  # VAE with .encode() and .decode() methods
 
-class LatentDiffusionText(GaussianDiffusion):
+class TextConditionalLatentDiffusion(TextConditionalDenoisingDiffusion):
     def __init__(self, model, vae, latent_shape, text_emb_dim = 512, **kwargs):
         """
         Latent Diffusion Model for text conditioning.
         
-        This version inherits directly from GaussianDiffusion (the text-conditional version)
+        This version inherits directly from TextConditionalDenoisingDiffusion (the text-conditional version)
         and adds VAE encoding/decoding to work in the latent space.
         
         :param model: A U-Net (or diffusion model) that already supports a text_emb argument.
         :param vae: Pretrained VAE for encoding images to and decoding images from latent space.
         :param latent_shape: Tuple (channels, height, width) describing a single latent sample.
         :param text_emb_dim: Dimensionality of the text embeddings (e.g. from a pretrained CLIP text encoder).
-        :param kwargs: Additional keyword arguments for GaussianDiffusion.
+        :param kwargs: Additional keyword arguments for TextConditionalDenoisingDiffusion.
         """
 
-        # GaussianDiffusion expects an image_size (spatial dims) from latent_shape.
+        # TextConditionalDenoisingDiffusion expects an image_size (spatial dims) from latent_shape.
         super().__init__(model, image_size=latent_shape[1],  **kwargs)
         
         self.vae = vae
@@ -72,7 +72,7 @@ class LatentDiffusionText(GaussianDiffusion):
         target_latents = self.encode(target)
         if isinstance(target_latents, tuple):
             target_latents = target_latents[0]
-        # Use GaussianDiffusion's forward (or loss computation) on latents
+        # Use TextConditionalDenoisingDiffusion's forward (or loss computation) on latents
         return super().forward(target_latents, text_emb=text_emb)
     
     
@@ -93,7 +93,7 @@ class LatentDiffusionText(GaussianDiffusion):
         (h, w), channels = self.image_size, self.channels
         sample_fn = self.p_sample_loop if not self.is_ddim_sampling else self.ddim_sample 
 
-        # Sample latent codes using the GaussianDiffusion sampling function.
+        # Sample latent codes using the TextConditionalDenoisingDiffusion sampling function.
         latent_samples = sample_fn((batch_size, channels, h, w), save_path_for_text, return_all_timesteps = return_all_timesteps)
         image_samples = self.decode(latent_samples)
 

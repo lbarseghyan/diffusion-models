@@ -11,7 +11,7 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 from torchvision import transforms as T
-from denoising_diffusion_pytorch.utils import *
+from denoising_diffusion.utils import *
 
 
 class Dataset(Dataset):

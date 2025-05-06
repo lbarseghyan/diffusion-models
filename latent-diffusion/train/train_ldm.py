@@ -51,8 +51,8 @@ vae.to(device)
 # ─── Unet Setup ─────────────────────────────────────────────────────────
 
 sys.path.append('/home/user1809/Desktop/diffusion-models/denoising-diffusion-pytorch')
-from denoising_diffusion_pytorch.utils import *
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
+from denoising_diffusion.utils import *
+from denoising_diffusion.denoising_diffusion import Unet, Trainer
 
 unet_cfg = cfg['Unet_config']
 

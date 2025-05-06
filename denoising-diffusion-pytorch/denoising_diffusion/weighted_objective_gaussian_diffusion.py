@@ -3,15 +3,15 @@ from inspect import isfunction
 from torch import nn, einsum
 from einops import rearrange
 
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch import GaussianDiffusion
+from denoising_diffusion.denoising_diffusion import DenoisingDiffusion
 
-from denoising_diffusion_pytorch.utils import exists, default
+from denoising_diffusion.utils import exists, default
 
 # some improvisation on my end
 # where i have the model learn to both predict noise and x0
 # and learn the weighted sum for each depending on time step
 
-class WeightedObjectiveGaussianDiffusion(GaussianDiffusion):
+class WeightedObjectiveGaussianDiffusion(DenoisingDiffusion):
     def __init__(
         self,
         model,

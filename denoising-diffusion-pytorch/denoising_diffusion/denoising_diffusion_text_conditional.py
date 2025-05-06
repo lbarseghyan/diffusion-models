@@ -16,10 +16,10 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms as T, utils
 
 
-from denoising_diffusion_pytorch.attend import Attend
-from denoising_diffusion_pytorch.version import __version__
-from denoising_diffusion_pytorch.utils import *
-from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
+from denoising_diffusion.attend import Attend
+from denoising_diffusion.version import __version__
+from denoising_diffusion.utils import *
+from denoising_diffusion import Unet, DenoisingDiffusion, Trainer
 
 ModelPrediction =  namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
 
@@ -213,7 +213,7 @@ class Unet(Unet):
         x = self.final_res_block(x, t)
         return self.final_conv(x)
     
-# gaussian diffusion trainer class
+# Denoising Diffusion trainer class
 
 def extract(a, t, x_shape):
     b, *_ = t.shape
@@ -261,7 +261,7 @@ def sigmoid_beta_schedule(timesteps, start = -3, end = 3, tau = 1, clamp_min = 1
 # 2.  Diffusion process that forwards the condition through the Unet
 # --------------------------------------------------------------------------
 
-class GaussianDiffusion(GaussianDiffusion):
+class TextConditionalDenoisingDiffusion(DenoisingDiffusion):
     """Wraps the base diffusion class, piping *text_emb* through the model."""
 
     def __init__(self, *, model, embedding_file, **kwargs):
@@ -555,7 +555,7 @@ class GaussianDiffusion(GaussianDiffusion):
  # 3.  Trainer that feeds the condition tensor
  # -------------------------------------------------------------------------
 
-class Trainer(Trainer):
+class TextConditionalTrainer(Trainer):
     """
     Extend the Trainer to work with a DataLoader that returns (target, cond) tuples.
     """

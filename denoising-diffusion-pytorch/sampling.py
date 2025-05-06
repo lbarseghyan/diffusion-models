@@ -1,5 +1,5 @@
 import argparse
-from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer, Dataset
+from denoising_diffusion_pytorch import Unet, DenoisingDiffusion, Trainer, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import cpu_count
 from denoising_diffusion_pytorch.utils import *
@@ -10,8 +10,8 @@ from tqdm.auto import tqdm
 import os
 import re
 from ema_pytorch import EMA
-from denoising_diffusion_pytorch.inception_score_evaluation import InceptionScoreEvaluation
-from denoising_diffusion_pytorch.fid_evaluation import FIDEvaluation
+from denoising_diffusion.inception_score_evaluation import InceptionScoreEvaluation
+from denoising_diffusion.fid_evaluation import FIDEvaluation
 from torch.utils.data import DataLoader
 
 
@@ -21,7 +21,7 @@ model = Unet(
     dropout = 0.1,
 )
 
-diffusion = GaussianDiffusion(
+diffusion = DenoisingDiffusion(
     model,
     image_size = 32,
     timesteps = 1000,           # number of steps

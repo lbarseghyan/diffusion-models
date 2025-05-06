@@ -6,8 +6,8 @@ import yaml
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch_image_conditional import Unet, GaussianDiffusion, Trainer
-from denoising_diffusion_pytorch.utils import *
+from denoising_diffusion.denoising_diffusion_image_conditional import Unet, ImageConditionalDenoisingDiffusion, ImageConditionalTrainer
+from denoising_diffusion.utils import *
 from utils.data import ImageConditionalDataset
 
 
@@ -43,10 +43,10 @@ unet = Unet(
     self_condition = unet_cfg['self_condition'],    
 )
 
-# ─── GaussianDiffusion Setup ───────────────────────────────────────────────
+# ─── DenoisingDiffusion Setup ───────────────────────────────────────────────
 
 diffusion_cfg = cfg['diffusion']
-diffusion = GaussianDiffusion(
+diffusion = ImageConditionalDenoisingDiffusion(
     model                 = unet,
     image_size            = diffusion_cfg['image_size'],
     timesteps             = diffusion_cfg['timesteps'],        
@@ -57,7 +57,7 @@ diffusion = GaussianDiffusion(
 # ─── Trainer Setup ─────────────────────────────────────────────────────────
 
 trainer_cfg = cfg['trainer']
-trainer = Trainer(
+trainer = ImageConditionalTrainer(
     diffusion_model       = diffusion,
     dataset               = dataset,
     train_batch_size      = trainer_cfg['train_batch_size'],

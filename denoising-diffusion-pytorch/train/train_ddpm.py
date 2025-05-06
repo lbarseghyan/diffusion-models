@@ -3,7 +3,7 @@ sys.path.append('denoising-diffusion-pytorch')
 
 import argparse
 import yaml
-from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
+from denoising_diffusion import Unet, DenoisingDiffusion, Trainer
 
 # ─── Load config ─────────────────────────────────────────────────────────
 
@@ -26,10 +26,10 @@ unet = Unet(
     dropout   = unet_cfg['dropout'],
 )
 
-# ─── GaussianDiffusion Setup ───────────────────────────────────────────────
+# ─── DenoisingDiffusion Setup ───────────────────────────────────────────────
 
 diffusion_cfg = cfg['diffusion']
-diffusion = GaussianDiffusion(
+diffusion = DenoisingDiffusion(
     model              = unet,
     image_size         = diffusion_cfg['image_size'],
     timesteps          = diffusion_cfg['timesteps'],           # number of steps

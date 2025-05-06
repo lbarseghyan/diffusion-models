@@ -33,11 +33,11 @@ from ema_pytorch import EMA
 
 from accelerate import Accelerator
 
-from denoising_diffusion_pytorch.attend import Attend
+from denoising_diffusion.attend import Attend
 
-from denoising_diffusion_pytorch.version import __version__
+from denoising_diffusion.version import __version__
 
-from denoising_diffusion_pytorch.utils import *
+from denoising_diffusion.utils import *
 
 # constants
 
@@ -432,7 +432,7 @@ def sigmoid_beta_schedule(timesteps, start = -3, end = 3, tau = 1, clamp_min = 1
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0, 0.999)
 
-class GaussianDiffusion(Module):
+class DenoisingDiffusion(Module):
     def __init__(
         self,
         model,
@@ -453,7 +453,7 @@ class GaussianDiffusion(Module):
         hybrid_loss = False          # From Improved DDPM
     ):
         super().__init__()
-        assert not (type(self) == GaussianDiffusion and model.channels != model.out_dim)
+        assert not (type(self) == DenoisingDiffusion and model.channels != model.out_dim)
         assert not hasattr(model, 'random_or_learned_sinusoidal_cond') or not model.random_or_learned_sinusoidal_cond
 
         self.model = model
@@ -1050,7 +1050,7 @@ class Trainer:
         self.calculate_fid = calculate_fid and self.accelerator.is_main_process
 
         if self.calculate_fid:
-            from denoising_diffusion_pytorch.fid_evaluation import FIDEvaluation
+            from denoising_diffusion.fid_evaluation import FIDEvaluation
 
             if not is_ddim_sampling:
                 self.accelerator.print(
@@ -1075,7 +1075,7 @@ class Trainer:
         self.calculate_is = calculate_is and self.accelerator.is_main_process  # Ensure only main process calculates IS
 
         if self.calculate_is:
-            from denoising_diffusion_pytorch.inception_score_evaluation import InceptionScoreEvaluation
+            from denoising_diffusion.inception_score_evaluation import InceptionScoreEvaluation
 
             self.is_scorer = InceptionScoreEvaluation(
                 batch_size=self.batch_size,

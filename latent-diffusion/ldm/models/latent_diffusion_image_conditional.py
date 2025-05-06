@@ -2,18 +2,18 @@ import os
 import torch
 from torch import nn
 
-# Import the base GaussianDiffusion (DDPM) and VAE (VQModel) from the repository
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch_image_conditional import GaussianDiffusion
-from denoising_diffusion_pytorch.utils import identity
+# Import the base ImageConditionalDenoisingDiffusion (DDPM) and VAE (VQModel) from the repository
+from denoising_diffusion.denoising_diffusion_image_conditional import ImageConditionalDenoisingDiffusion
+from denoising_diffusion.utils import identity
 
 from ldm.models.autoencoder import VQModel  # VAE with .encode() and .decode() methods
 
-class LatentDiffusionImage(GaussianDiffusion):
+class ImageConditionalLatentDiffusionImage(ImageConditionalDenoisingDiffusion):
     def __init__(self, model, vae, latent_shape, condition_data_folder, cond_vae=None,  **kwargs):
         """
         Latent Diffusion Model for image conditioning.
         
-        This version inherits directly from GaussianDiffusion (the image-conditional version)
+        This version inherits directly from ImageConditionalDenoisingDiffusion (the image-conditional version)
         and adds VAE encoding/decoding to work in the latent space.
         
         :param model: A U-Net (or diffusion model) that already supports a text_emb argument.
@@ -22,10 +22,10 @@ class LatentDiffusionImage(GaussianDiffusion):
         :param cond_vae: (Optional) A separate VAE trained for the conditioning image. If None,
                              the same VAE is used.
         :param condition_data_folder: Path of the folder for conditional images.
-        :param kwargs: Additional keyword arguments for GaussianDiffusion.
+        :param kwargs: Additional keyword arguments for ImageConditionalDenoisingDiffusion.
         """
 
-        # GaussianDiffusion expects an image_size (spatial dims) from latent_shape.
+        # ImageConditionalDenoisingDiffusion expects an image_size (spatial dims) from latent_shape.
         super().__init__(model, image_size=latent_shape[1], **kwargs)
         
         self.vae = vae
@@ -85,7 +85,7 @@ class LatentDiffusionImage(GaussianDiffusion):
         # Encode the target images into latent space.
         target_latents = self.encode(target)
         cond_latents = self.encode(cond, cond=True)
-        # Use GaussianDiffusion's forward (or loss computation) on latents
+        # Use ImageConditionalDenoisingDiffusion's forward (or loss computation) on latents
         return super().forward(target_latents, cond=cond_latents)
     
 

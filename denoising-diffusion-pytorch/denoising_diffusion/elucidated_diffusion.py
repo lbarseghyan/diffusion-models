@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from einops import rearrange, repeat, reduce
 
-from denoising_diffusion_pytorch.utils import exists, default, normalize_to_neg_one_to_one, unnormalize_to_zero_to_one
+from denoising_diffusion.utils import exists, default, normalize_to_neg_one_to_one, unnormalize_to_zero_to_one
 
 
 

@@ -5,7 +5,6 @@ the magnitude-preserving unet proposed in https://arxiv.org/abs/2312.02696 by Ka
 import math
 from math import sqrt, ceil
 from functools import partial
-from typing import Optional, Union, Tuple
 
 import torch
 from torch import nn, einsum
@@ -15,9 +14,9 @@ import torch.nn.functional as F
 
 from einops import rearrange, repeat, pack, unpack
 
-from denoising_diffusion_pytorch.attend import Attend
+from denoising_diffusion.attend import Attend
 
-from denoising_diffusion_pytorch.utils_karras import *
+from denoising_diffusion.utils_karras import *
 
 # mp activations
 # section 2.5
@@ -86,7 +85,7 @@ class PixelNorm(Module):
         dim = self.dim
         return l2norm(x, dim = dim, eps = self.eps) * sqrt(x.shape[dim])
 
-# forced weight normed conv3d and linear
+# forced weight normed conv2d and linear
 # algorithm 1 in paper
 
 def normalize_weight(weight, eps = 1e-4):
@@ -95,7 +94,7 @@ def normalize_weight(weight, eps = 1e-4):
     normed_weight = normed_weight * sqrt(weight.numel() / weight.shape[0])
     return unpack_one(normed_weight, ps, 'o *')
 
-class Conv3d(Module):
+class Conv2d(Module):
     def __init__(
         self,
         dim_in,
@@ -105,11 +104,11 @@ class Conv3d(Module):
         concat_ones_to_input = False   # they use this in the input block to protect against loss of expressivity due to removal of all biases, even though they claim they observed none
     ):
         super().__init__()
-        weight = torch.randn(dim_out, dim_in + int(concat_ones_to_input), kernel_size, kernel_size, kernel_size)
+        weight = torch.randn(dim_out, dim_in + int(concat_ones_to_input), kernel_size, kernel_size)
         self.weight = nn.Parameter(weight)
 
         self.eps = eps
-        self.fan_in = dim_in * kernel_size ** 3
+        self.fan_in = dim_in * kernel_size ** 2
         self.concat_ones_to_input = concat_ones_to_input
 
     def forward(self, x):
@@ -122,9 +121,9 @@ class Conv3d(Module):
         weight = normalize_weight(self.weight, eps = self.eps) / sqrt(self.fan_in)
 
         if self.concat_ones_to_input:
-            x = F.pad(x, (0, 0, 0, 0, 0, 0, 1, 0), value = 1.)
+            x = F.pad(x, (0, 0, 0, 0, 1, 0), value = 1.)
 
-        return F.conv3d(x, weight, padding='same')
+        return F.conv2d(x, weight, padding='same')
 
 class Linear(Module):
     def __init__(self, dim_in, dim_out, eps = 1e-4):
@@ -172,21 +171,17 @@ class Encoder(Module):
         attn_dim_head = 64,
         attn_res_mp_add_t = 0.3,
         attn_flash = False,
-        factorize_space_time_attn = False,
-        downsample = False,
-        downsample_config: Tuple[bool, bool, bool] = (True, True, True)
+        downsample = False
     ):
         super().__init__()
         dim_out = default(dim_out, dim)
 
         self.downsample = downsample
-        self.downsample_config = downsample_config
-
         self.downsample_conv = None
 
         curr_dim = dim
         if downsample:
-            self.downsample_conv = Conv3d(curr_dim, dim_out, 1)
+            self.downsample_conv = Conv2d(curr_dim, dim_out, 1)
             curr_dim = dim_out
 
         self.pixel_norm = PixelNorm(dim = 1)
@@ -200,22 +195,20 @@ class Encoder(Module):
 
         self.block1 = nn.Sequential(
             MPSiLU(),
-            Conv3d(curr_dim, dim_out, 3)
+            Conv2d(curr_dim, dim_out, 3)
         )
 
         self.block2 = nn.Sequential(
             MPSiLU(),
             nn.Dropout(dropout),
-            Conv3d(dim_out, dim_out, 3)
+            Conv2d(dim_out, dim_out, 3)
         )
 
         self.res_mp_add = MPAdd(t = mp_add_t)
 
         self.attn = None
-        self.factorized_attn = factorize_space_time_attn
-
         if has_attn:
-            attn_kwargs = dict(
+            self.attn = Attention(
                 dim = dim_out,
                 heads = max(ceil(dim_out / attn_dim_head), 2),
                 dim_head = attn_dim_head,
@@ -223,25 +216,14 @@ class Encoder(Module):
                 flash = attn_flash
             )
 
-            if factorize_space_time_attn:
-                self.attn = nn.ModuleList([
-                    Attention(**attn_kwargs, only_space = True),
-                    Attention(**attn_kwargs, only_time = True),
-                ])
-            else:
-                self.attn = Attention(**attn_kwargs)
-
     def forward(
         self,
         x,
         emb = None
     ):
         if self.downsample:
-            t, h, w = x.shape[-3:]
-            resize_factors = tuple((2 if downsample else 1) for downsample in self.downsample_config)
-            interpolate_shape = tuple(shape // factor for shape, factor in zip((t, h, w), resize_factors))
-
-            x = F.interpolate(x, interpolate_shape, mode = 'trilinear')
+            h, w = x.shape[-2:]
+            x = F.interpolate(x, (h // 2, w // 2), mode = 'bilinear')
             x = self.downsample_conv(x)
 
         x = self.pixel_norm(x)
@@ -252,20 +234,14 @@ class Encoder(Module):
 
         if exists(emb):
             scale = self.to_emb(emb) + 1
-            x = x * rearrange(scale, 'b c -> b c 1 1 1')
+            x = x * rearrange(scale, 'b c -> b c 1 1')
 
         x = self.block2(x)
 
         x = self.res_mp_add(x, res)
 
         if exists(self.attn):
-            if self.factorized_attn:
-                attn_space, attn_time = self.attn
-                x = attn_space(x)
-                x = attn_time(x)
-
-            else:
-                x = self.attn(x)
+            x = self.attn(x)
 
         return x
 
@@ -282,16 +258,12 @@ class Decoder(Module):
         attn_dim_head = 64,
         attn_res_mp_add_t = 0.3,
         attn_flash = False,
-        factorize_space_time_attn = False,
-        upsample = False,
-        upsample_config: Tuple[bool, bool, bool] = (True, True, True)
+        upsample = False
     ):
         super().__init__()
         dim_out = default(dim_out, dim)
 
         self.upsample = upsample
-        self.upsample_config = upsample_config
-
         self.needs_skip = not upsample
 
         self.to_emb = None
@@ -303,24 +275,22 @@ class Decoder(Module):
 
         self.block1 = nn.Sequential(
             MPSiLU(),
-            Conv3d(dim, dim_out, 3)
+            Conv2d(dim, dim_out, 3)
         )
 
         self.block2 = nn.Sequential(
             MPSiLU(),
             nn.Dropout(dropout),
-            Conv3d(dim_out, dim_out, 3)
+            Conv2d(dim_out, dim_out, 3)
         )
 
-        self.res_conv = Conv3d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
+        self.res_conv = Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
         self.res_mp_add = MPAdd(t = mp_add_t)
 
         self.attn = None
-        self.factorized_attn = factorize_space_time_attn
-
         if has_attn:
-            attn_kwargs = dict(
+            self.attn = Attention(
                 dim = dim_out,
                 heads = max(ceil(dim_out / attn_dim_head), 2),
                 dim_head = attn_dim_head,
@@ -328,25 +298,14 @@ class Decoder(Module):
                 flash = attn_flash
             )
 
-            if factorize_space_time_attn:
-                self.attn = nn.ModuleList([
-                    Attention(**attn_kwargs, only_space = True),
-                    Attention(**attn_kwargs, only_time = True),
-                ])
-            else:
-                self.attn = Attention(**attn_kwargs)
-
     def forward(
         self,
         x,
         emb = None
     ):
         if self.upsample:
-            t, h, w = x.shape[-3:]
-            resize_factors = tuple((2 if upsample else 1) for upsample in self.upsample_config)
-            interpolate_shape = tuple(shape * factor for shape, factor in zip((t, h, w), resize_factors))
-
-            x = F.interpolate(x, interpolate_shape, mode = 'trilinear')
+            h, w = x.shape[-2:]
+            x = F.interpolate(x, (h * 2, w * 2), mode = 'bilinear')
 
         res = self.res_conv(x)
 
@@ -354,20 +313,14 @@ class Decoder(Module):
 
         if exists(emb):
             scale = self.to_emb(emb) + 1
-            x = x * rearrange(scale, 'b c -> b c 1 1 1')
+            x = x * rearrange(scale, 'b c -> b c 1 1')
 
         x = self.block2(x)
 
         x = self.res_mp_add(x, res)
 
         if exists(self.attn):
-            if self.factorized_attn:
-                attn_space, attn_time = self.attn
-                x = attn_space(x)
-                x = attn_time(x)
-
-            else:
-                x = self.attn(x)
+            x = self.attn(x)
 
         return x
 
@@ -381,13 +334,9 @@ class Attention(Module):
         dim_head = 64,
         num_mem_kv = 4,
         flash = False,
-        mp_add_t = 0.3,
-        only_space = False,
-        only_time = False
+        mp_add_t = 0.3
     ):
         super().__init__()
-        assert (int(only_space) + int(only_time)) <= 1
-
         self.heads = heads
         hidden_dim = dim_head * heads
 
@@ -396,46 +345,25 @@ class Attention(Module):
         self.attend = Attend(flash = flash)
 
         self.mem_kv = nn.Parameter(torch.randn(2, heads, num_mem_kv, dim_head))
-        self.to_qkv = Conv3d(dim, hidden_dim * 3, 1)
-        self.to_out = Conv3d(hidden_dim, dim, 1)
+        self.to_qkv = Conv2d(dim, hidden_dim * 3, 1)
+        self.to_out = Conv2d(hidden_dim, dim, 1)
 
         self.mp_add = MPAdd(t = mp_add_t)
 
-        self.only_space = only_space
-        self.only_time = only_time
-
     def forward(self, x):
-        res, orig_shape = x, x.shape
-        b, c, t, h, w = orig_shape
+        res, b, c, h, w = x, *x.shape
 
-        qkv = self.to_qkv(x)
+        qkv = self.to_qkv(x).chunk(3, dim = 1)
+        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h (x y) c', h = self.heads), qkv)
 
-        if self.only_space:
-            qkv = rearrange(qkv, 'b c t x y -> (b t) c x y')
-        elif self.only_time:
-            qkv = rearrange(qkv, 'b c t x y -> (b x y) c t')
-
-        qkv = qkv.chunk(3, dim = 1)
-
-        q, k, v = map(lambda t: rearrange(t, 'b (h c) ... -> b h (...) c', h = self.heads), qkv)
-
-        mk, mv = map(lambda t: repeat(t, 'h n d -> b h n d', b = k.shape[0]), self.mem_kv)
-
+        mk, mv = map(lambda t: repeat(t, 'h n d -> b h n d', b = b), self.mem_kv)
         k, v = map(partial(torch.cat, dim = -2), ((mk, k), (mv, v)))
 
         q, k, v = map(self.pixel_norm, (q, k, v))
 
         out = self.attend(q, k, v)
 
-        out = rearrange(out, 'b h n d -> b (h d) n')
-
-        if self.only_space:
-            out = rearrange(out, '(b t) c n -> b c (t n)', t = t)
-        elif self.only_time:
-            out = rearrange(out, '(b x y) c n -> b c (n x y)', x = h, y = w)
-
-        out = out.reshape(orig_shape)
-
+        out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         out = self.to_out(out)
 
         return self.mp_add(out, res)
@@ -443,7 +371,7 @@ class Attention(Module):
 # unet proposed by karras
 # bias-less, no group-norms, with magnitude preserving operations
 
-class KarrasUnet3D(Module):
+class KarrasUnet(Module):
     """
     going by figure 21. config G
     """
@@ -452,14 +380,12 @@ class KarrasUnet3D(Module):
         self,
         *,
         image_size,
-        frames,
         dim = 192,
         dim_max = 768,            # channels will double every downsample and cap out to this value
         num_classes = None,       # in paper, they do 1000 classes for a popular benchmark
         channels = 4,             # 4 channels in paper for some reason, must be alpha channel?
         num_downsamples = 3,
-        num_blocks_per_stage: Union[int, Tuple[int, ...]] = 4,
-        downsample_types: Optional[Tuple[str, ...]] = None,
+        num_blocks_per_stage = 4,
         attn_res = (16, 8),
         fourier_dim = 16,
         attn_dim_head = 64,
@@ -469,8 +395,7 @@ class KarrasUnet3D(Module):
         attn_res_mp_add_t = 0.3,
         resnet_mp_add_t = 0.3,
         dropout = 0.1,
-        self_condition = False,
-        factorize_space_time_attn = False
+        self_condition = False
     ):
         super().__init__()
 
@@ -479,17 +404,15 @@ class KarrasUnet3D(Module):
         # determine dimensions
 
         self.channels = channels
-        self.frames = frames
         self.image_size = image_size
-
         input_channels = channels * (2 if self_condition else 1)
 
         # input and output blocks
 
-        self.input_block = Conv3d(input_channels, dim, 3, concat_ones_to_input = True)
+        self.input_block = Conv2d(input_channels, dim, 3, concat_ones_to_input = True)
 
         self.output_block = nn.Sequential(
-            Conv3d(dim, channels, 3),
+            Conv2d(dim, channels, 3),
             Gain()
         )
 
@@ -519,25 +442,6 @@ class KarrasUnet3D(Module):
 
         self.num_downsamples = num_downsamples
 
-        # specifying downsample types (either image, frames, or both)
-
-        downsample_types = default(downsample_types, 'all')
-        downsample_types = cast_tuple(downsample_types, num_downsamples)
-
-        assert len(downsample_types) == num_downsamples
-        assert all([t in {'all', 'frame', 'image'} for t in downsample_types])
-
-        # number of blocks per downsample
-
-        num_blocks_per_stage = cast_tuple(num_blocks_per_stage, num_downsamples)
-
-        if len(num_blocks_per_stage) == num_downsamples:
-            first, *_ = num_blocks_per_stage
-            num_blocks_per_stage = (first, *num_blocks_per_stage)
-
-        assert len(num_blocks_per_stage) == (num_downsamples + 1)
-        assert all([num_blocks >= 1 for num_blocks in num_blocks_per_stage])
-
         # attention
 
         attn_res = set(cast_tuple(attn_res))
@@ -558,8 +462,7 @@ class KarrasUnet3D(Module):
         self.ups = ModuleList([])
 
         curr_dim = dim
-        curr_image_res = image_size
-        curr_frame_res = frames
+        curr_res = image_size
 
         self.skip_mp_cat = MPCat(t = mp_cat_t, dim = 1)
 
@@ -567,9 +470,9 @@ class KarrasUnet3D(Module):
 
         prepend(self.ups, Decoder(dim * 2, dim, **block_kwargs))
 
-        init_num_blocks_per_stage, *rest_num_blocks_per_stage = num_blocks_per_stage
+        assert num_blocks_per_stage >= 1
 
-        for _ in range(init_num_blocks_per_stage):
+        for _ in range(num_blocks_per_stage):
             enc = Encoder(curr_dim, curr_dim, **block_kwargs)
             dec = Decoder(curr_dim * 2, curr_dim, **block_kwargs)
 
@@ -578,55 +481,20 @@ class KarrasUnet3D(Module):
 
         # stages
 
-        for _, layer_num_blocks_per_stage, layer_downsample_type in zip(range(self.num_downsamples), rest_num_blocks_per_stage, downsample_types):
-
+        for _ in range(self.num_downsamples):
             dim_out = min(dim_max, curr_dim * 2)
+            upsample = Decoder(dim_out, curr_dim, has_attn = curr_res in attn_res, upsample = True, **block_kwargs)
 
-            downsample_image = layer_downsample_type in {'all', 'image'}
-            downsample_frame = layer_downsample_type in {'all', 'frame'}
+            curr_res //= 2
+            has_attn = curr_res in attn_res
 
-            assert not (downsample_image and not divisible_by(curr_image_res, 2))
-            assert not (downsample_frame and not divisible_by(curr_frame_res, 2))
-
-            down_and_upsample_config = (
-                downsample_frame,
-                downsample_image,
-                downsample_image
-            )
-
-            upsample = Decoder(
-                dim_out,
-                curr_dim,
-                has_attn = curr_image_res in attn_res,
-                upsample = True,
-                upsample_config = down_and_upsample_config,
-                factorize_space_time_attn = factorize_space_time_attn,
-                **block_kwargs
-            )
-
-            if downsample_image:
-                curr_image_res //= 2
-
-            if downsample_frame:
-                curr_frame_res //= 2
-
-            has_attn = curr_image_res in attn_res
-
-            downsample = Encoder(
-                curr_dim,
-                dim_out,
-                downsample = True,
-                downsample_config = down_and_upsample_config,
-                has_attn = has_attn,
-                factorize_space_time_attn = factorize_space_time_attn,
-                **block_kwargs
-            )
+            downsample = Encoder(curr_dim, dim_out, downsample = True, has_attn = has_attn, **block_kwargs)
 
             append(self.downs, downsample)
             prepend(self.ups, upsample)
             prepend(self.ups, Decoder(dim_out * 2, dim_out, has_attn = has_attn, **block_kwargs))
 
-            for _ in range(layer_num_blocks_per_stage):
+            for _ in range(num_blocks_per_stage):
                 enc = Encoder(dim_out, dim_out, has_attn = has_attn, **block_kwargs)
                 dec = Decoder(dim_out * 2, dim_out, has_attn = has_attn, **block_kwargs)
 
@@ -637,7 +505,7 @@ class KarrasUnet3D(Module):
 
         # take care of the two middle decoders
 
-        mid_has_attn = curr_image_res in attn_res
+        mid_has_attn = curr_res in attn_res
 
         self.mids = ModuleList([
             Decoder(curr_dim, curr_dim, has_attn = mid_has_attn, **block_kwargs),
@@ -659,7 +527,7 @@ class KarrasUnet3D(Module):
     ):
         # validate image shape
 
-        assert x.shape[1:] == (self.channels, self.frames, self.image_size, self.image_size)
+        assert x.shape[1:] == (self.channels, self.image_size, self.image_size)
 
         # self conditioning
 
@@ -740,9 +608,9 @@ class MPFeedForward(Module):
         dim_inner = int(dim * mult)
         self.net = nn.Sequential(
             PixelNorm(dim = 1),
-            Conv3d(dim, dim_inner, 1),
+            Conv2d(dim, dim_inner, 1),
             MPSiLU(),
-            Conv3d(dim_inner, dim, 1)
+            Conv2d(dim_inner, dim, 1)
         )
 
         self.mp_add = MPAdd(t = mp_add_t)
@@ -782,34 +650,37 @@ class MPImageTransformer(Module):
 
         return x
 
+# works best with inverse square root decay schedule
+
+def InvSqrtDecayLRSched(
+    optimizer,
+    t_ref = 70000,
+    sigma_ref = 0.01
+):
+    """
+    refer to equation 67 and Table1
+    """
+    def inv_sqrt_decay_fn(t: int):
+        return sigma_ref / sqrt(max(t / t_ref, 1.))
+
+    return LambdaLR(optimizer, lr_lambda = inv_sqrt_decay_fn)
+
 # example
 
 if __name__ == '__main__':
-
-    unet = KarrasUnet3D(
-        frames = 32,
+    unet = KarrasUnet(
         image_size = 64,
-        dim = 8,
+        dim = 192,
         dim_max = 768,
-        num_downsamples = 6,
-        num_blocks_per_stage = (4, 3, 2, 2, 2, 2),
-        downsample_types = (
-            'image',
-            'frame',
-            'image',
-            'frame',
-            'image',
-            'frame',
-        ),
-        attn_dim_head = 8,
         num_classes = 1000,
-        factorize_space_time_attn = True  # whether to do attention across space and time separately
     )
 
-    video = torch.randn(2, 4, 32, 64, 64)
+    images = torch.randn(2, 4, 64, 64)
 
-    denoised_video = unet(
-        video,
+    denoised_images = unet(
+        images,
         time = torch.ones(2,),
         class_labels = torch.randint(0, 1000, (2,))
     )
+
+    assert denoised_images.shape == images.shape

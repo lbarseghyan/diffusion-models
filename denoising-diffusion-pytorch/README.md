@@ -21,14 +21,14 @@ Update: Turns out none of the technicalities really matters at all | <a href="ht
 ## Install
 
 ```bash
-$ pip install denoising_diffusion_pytorch
+$ pip install denoising_diffusion
 ```
 
 ## Usage
 
 ```python
 import torch
-from denoising_diffusion_pytorch import Unet, GaussianDiffusion
+from denoising_diffusion import Unet, DenoisingDiffusion
 
 model = Unet(
     dim = 64,
@@ -36,7 +36,7 @@ model = Unet(
     flash_attn = True
 )
 
-diffusion = GaussianDiffusion(
+diffusion = DenoisingDiffusion(
     model,
     image_size = 128,
     timesteps = 1000    # number of steps
@@ -55,7 +55,7 @@ sampled_images.shape # (4, 3, 128, 128)
 Or, if you simply want to pass in a folder name and the desired image dimensions, you can use the `Trainer` class to easily train a model.
 
 ```python
-from denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer
+from denoising_diffusion import Unet, DenoisingDiffusion, Trainer
 
 model = Unet(
     dim = 64,
@@ -63,7 +63,7 @@ model = Unet(
     flash_attn = True
 )
 
-diffusion = GaussianDiffusion(
+diffusion = DenoisingDiffusion(
     model,
     image_size = 128,
     timesteps = 1000,           # number of steps
@@ -111,7 +111,7 @@ By popular request, a 1D Unet + Gaussian Diffusion implementation.
 
 ```python
 import torch
-from denoising_diffusion_pytorch import Unet1D, GaussianDiffusion1D, Trainer1D, Dataset1D
+from denoising_diffusion import Unet1D, DenoisingDiffusion1D, Trainer1D, Dataset1D
 
 model = Unet1D(
     dim = 64,
@@ -119,7 +119,7 @@ model = Unet1D(
     channels = 32
 )
 
-diffusion = GaussianDiffusion1D(
+diffusion = DenoisingDiffusion1D(
     model,
     seq_length = 128,
     timesteps = 1000,

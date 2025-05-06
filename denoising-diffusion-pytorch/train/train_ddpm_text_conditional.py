@@ -6,8 +6,8 @@ import yaml
 
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from denoising_diffusion_pytorch.utils import *
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch_text_conditional import Unet, GaussianDiffusion, Trainer
+from denoising_diffusion.utils import *
+from denoising_diffusion.denoising_diffusion_text_conditional import Unet, TextConditionalDenoisingDiffusion, TextConditionalTrainer
 from utils.data import TextConditionalDataset
 
 
@@ -43,10 +43,10 @@ unet = Unet(
     use_cross_attn = unet_cfg['use_cross_attn']
 )
 
-# ─── GaussianDiffusion Setup ───────────────────────────────────────────────
+# ─── DenoisingDiffusion Setup ───────────────────────────────────────────────
 
 diffusion_cfg = cfg['diffusion']
-diffusion = GaussianDiffusion(
+diffusion = TextConditionalDenoisingDiffusion(
     model                 = unet,
     image_size            = diffusion_cfg['image_size'],
     timesteps             = diffusion_cfg['timesteps'], 
@@ -69,7 +69,7 @@ diffusion = GaussianDiffusion(
 
 
 trainer_cfg = cfg['trainer']
-trainer = Trainer(
+trainer = TextConditionalTrainer(
     diffusion_model       = diffusion,
     dataset               = dataset,
     train_batch_size      = trainer_cfg['train_batch_size'],

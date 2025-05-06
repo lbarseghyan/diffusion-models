@@ -5,9 +5,9 @@ from inspect import isfunction
 from torch import nn, einsum
 from einops import rearrange
 
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch import GaussianDiffusion, extract, unnormalize_to_zero_to_one
+from denoising_diffusion.denoising_diffusion import DenoisingDiffusion, extract, unnormalize_to_zero_to_one
 
-from denoising_diffusion_pytorch.utils import exists, default
+from denoising_diffusion.utils import exists, default
 # constants
 
 NAT = 1. / ln(2)
@@ -58,7 +58,7 @@ def discretized_gaussian_log_likelihood(x, *, means, log_scales, thres = 0.999):
 # but may as well get this in here for others to try, as GLIDE is using it (and DALL-E2 first stage of cascade)
 # gaussian diffusion for learned variance + hybrid eps simple + vb loss
 
-class LearnedGaussianDiffusion(GaussianDiffusion):
+class LearnedGaussianDiffusion(DenoisingDiffusion):
     def __init__(
         self,
         model,

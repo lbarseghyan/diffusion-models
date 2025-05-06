@@ -1,19 +1,19 @@
 import torch
 import torch.nn as nn
 
-# Import the base GaussianDiffusion (DDPM) and VAE (VQModel) from the repository
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch import GaussianDiffusion
-from denoising_diffusion_pytorch.utils import identity
+# Import the base DenoisingDiffusion (DDPM) and VAE (VQModel) from the repository
+from denoising_diffusion.denoising_diffusion import DenoisingDiffusion
+from denoising_diffusion.utils import identity
 from ldm.models.autoencoder import VQModel  # VAE with .encode() and .decode() methods
 
-class LatentDiffusion(GaussianDiffusion):
+class LatentDiffusion(DenoisingDiffusion):
     def __init__(self, model, vae, latent_shape, **kwargs):
         """
         Latent Diffusion Model: Diffusion in VAE latent space.
         :param model: The U-Net or diffusion model operating on latent space.
         :param vae: Pre-trained VAE (with encoder & decoder) to compress images.
         :param latent_shape: Shape of the VAE latent (channels, height, width).
-        :param kwargs: Additional arguments for GaussianDiffusion (e.g., beta schedule).
+        :param kwargs: Additional arguments for DenoisingDiffusion (e.g., beta schedule).
         """
 
         super().__init__(model, image_size=latent_shape[1], **kwargs)
@@ -52,7 +52,7 @@ class LatentDiffusion(GaussianDiffusion):
         """Compute diffusion loss on a batch of real images (for training)."""
         # Encode images to latent space
         latents = self.encode(real_images)
-        # Use GaussianDiffusion's forward (or loss computation) on latents
+        # Use DenoisingDiffusion's forward (or loss computation) on latents
         return super().forward(latents)
 
 

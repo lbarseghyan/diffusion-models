@@ -21,9 +21,9 @@ from ema_pytorch import EMA
 
 from tqdm.auto import tqdm
 
-from denoising_diffusion_pytorch.version import __version__
+from denoising_diffusion.version import __version__
 
-from denoising_diffusion_pytorch.utils import *
+from denoising_diffusion.utils import *
 
 # constants
 
@@ -348,7 +348,7 @@ class Unet1D(Module):
         x = self.final_res_block(x, t)
         return self.final_conv(x)
 
-# gaussian diffusion trainer class
+# Denoising Diffusion trainer class
 
 def extract(a, t, x_shape):
     b, *_ = t.shape
@@ -373,7 +373,7 @@ def cosine_beta_schedule(timesteps, s = 0.008):
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0, 0.999)
 
-class GaussianDiffusion1D(Module):
+class DenoisingDiffusion1D(Module):
     def __init__(
         self,
         model,
@@ -681,7 +681,7 @@ class GaussianDiffusion1D(Module):
 class Trainer1D(object):
     def __init__(
         self,
-        diffusion_model: GaussianDiffusion1D,
+        diffusion_model: DenoisingDiffusion1D,
         dataset: Dataset,
         *,
         train_batch_size = 16,

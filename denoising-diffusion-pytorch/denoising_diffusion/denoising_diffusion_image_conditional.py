@@ -16,8 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms as T, utils
 from PIL import Image
 
-from denoising_diffusion_pytorch.denoising_diffusion_pytorch import Unet, GaussianDiffusion, Trainer, extract
-from denoising_diffusion_pytorch.utils import (
+from denoising_diffusion.denoising_diffusion import Unet, DenoisingDiffusion, Trainer, extract
+from denoising_diffusion.utils import (
     exists, default, cycle, unnormalize_to_zero_to_one, num_to_groups, identity, divisible_by)
 
 # constants
@@ -59,8 +59,8 @@ class Unet(Unet):
 # 2.  Diffusion process that forwards the condition through the Unet
 # --------------------------------------------------------------------------
 
-class GaussianDiffusion(GaussianDiffusion):
-    """GaussianDiffusion wrapper that is aware of an image condition.
+class ImageConditionalDenoisingDiffusion(DenoisingDiffusion):
+    """DenoisingDiffusion wrapper that is aware of an image condition.
      It simply pass *cond* down to the underlying model everywhere it matters.
 
      Parameters
@@ -326,7 +326,7 @@ class GaussianDiffusion(GaussianDiffusion):
  # 3.  Trainer that feeds the condition tensor
  # -------------------------------------------------------------------------
 
-class Trainer(Trainer):
+class ImageConditionalTrainer(Trainer):
     """
     Extend the Trainer to work with a DataLoader that returns (target, cond) tuples.
 
