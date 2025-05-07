@@ -20,7 +20,7 @@ cfg = load_config(args.config)
 
 # ─── Import and Instantiate Your VQModel ─────────────────────────────────────────────────────────
 
-sys.path.append('/home/user1809/Desktop/diffusion-models/latent-diffusion')
+sys.path.append('./latent-diffusion')
 from ldm.models.autoencoder import VQModel  
 
 vae = VQModel(
@@ -50,11 +50,11 @@ vae.to(device)
 
 # ─── Unet Setup ─────────────────────────────────────────────────────────
 
-sys.path.append('/home/user1809/Desktop/diffusion-models/denoising-diffusion-pytorch')
+sys.path.append('./denoising-diffusion-pytorch')
 from denoising_diffusion.utils import *
 from denoising_diffusion.denoising_diffusion import Unet, Trainer
 
-unet_cfg = cfg['Unet_config']
+unet_cfg = cfg['unet']
 
 model = Unet(
     dim       = unet_cfg['dim'],
@@ -81,7 +81,7 @@ diffusion = LatentDiffusion(
 
 # ─── Trainer Setup ─────────────────────────────────────────────────────────
 
-trainer_cfg = cfg['trainer_config']
+trainer_cfg = cfg['trainer']
 
 
 trainer = Trainer(

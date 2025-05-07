@@ -1,6 +1,12 @@
 import os
+from tqdm.auto import tqdm
+from PIL import Image 
 import torch
 from torch import nn
+from pathlib import Path
+import random
+from torchvision import transforms as T
+
 
 # Import the base ImageConditionalDenoisingDiffusion (DDPM) and VAE (VQModel) from the repository
 from denoising_diffusion.denoising_diffusion_image_conditional import ImageConditionalDenoisingDiffusion
@@ -8,8 +14,8 @@ from denoising_diffusion.utils import identity
 
 from ldm.models.autoencoder import VQModel  # VAE with .encode() and .decode() methods
 
-class ImageConditionalLatentDiffusionImage(ImageConditionalDenoisingDiffusion):
-    def __init__(self, model, vae, latent_shape, condition_data_folder, cond_vae=None,  **kwargs):
+class ImageConditionalLatentDiffusion(ImageConditionalDenoisingDiffusion):
+    def __init__(self, model, vae, latent_shape, cond_vae=None,  **kwargs):
         """
         Latent Diffusion Model for image conditioning.
         
@@ -21,7 +27,6 @@ class ImageConditionalLatentDiffusionImage(ImageConditionalDenoisingDiffusion):
         :param latent_shape: Tuple (channels, height, width) describing a single latent sample.
         :param cond_vae: (Optional) A separate VAE trained for the conditioning image. If None,
                              the same VAE is used.
-        :param condition_data_folder: Path of the folder for conditional images.
         :param kwargs: Additional keyword arguments for ImageConditionalDenoisingDiffusion.
         """
 
@@ -38,7 +43,7 @@ class ImageConditionalLatentDiffusionImage(ImageConditionalDenoisingDiffusion):
         self.normalize = identity 
         self.unnormalize = identity
 
-        self.condition_data_folder = condition_data_folder  
+        # self.condition_data_folder = condition_data_folder  
 
         # Freeze the VAE (do not compute gradients for its parameters)
         self.vae.eval()
@@ -68,25 +73,65 @@ class ImageConditionalLatentDiffusionImage(ImageConditionalDenoisingDiffusion):
         """Decode latent representations back to image space using the VAE decoder."""
         with torch.no_grad():
             if cond:
-                images = self.cond_vae.encode(latents)
+                images = self.cond_vae.decode(latents)
             else:
-                images = self.vae.encode(latents)
+                images = self.vae.decode(latents)
         return images
     
 
-    def forward(self, target, cond):
+    def get_random_condition(self, batch, device):
         """
-        Forward pass computes the diffusion loss on target images conditioned on image.
+        Randomly sample a batch of condition images from the training condition folder.
+        Assumes that self.training_condition_data_folder is set to the folder path.
+        """
+        # Define a default transform if not already defined
+        if not hasattr(self, "cond_transform"):
+            self.cond_transform = T.Compose([
+                T.ToTensor()
+            ])
+                    
+        # List all images in the training condition folder and randomly choose 'batch' number of images
+        condition_folder = Path(self.condition_data_folder)
+        condition_paths = list(condition_folder.glob("*.*"))
+        selected_paths = random.choices(condition_paths, k = batch)
+
+        cond_images = []
+        for p in selected_paths:
+            img = Image.open(p).convert("RGB")
+            img = self.cond_transform(img)
+            cond_images.append(img)
+
+        cond_batch = torch.stack(cond_images, dim=0).to(device)
+
+        return cond_batch
+
+
+    @torch.inference_mode()
+    def p_sample_loop(self, shape, return_condition_image=False, return_all_timesteps = False):
+        batch, device = shape[0], self.device
+
+        img = torch.randn(shape, device = device)
+        imgs = [img]
+
+        # Sample a batch of condition images
+        cond = self.get_random_condition(batch, device)     # add
+
+        x_start = None
+
+        for t in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
+            self_cond = x_start if self.self_condition else None
+            cond_latent = self.encode(cond, cond=True)
+            img, x_start = self.p_sample(img, t, cond_latent, self_cond)
+            imgs.append(img)
+
+        ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
+
+        ret = self.unnormalize(ret)
+
+        if return_condition_image:
+            return (cond, ret)
         
-        :param target: Batch of target images.
-        :param cond: Batch of condition images.
-        :return: Diffusion loss in the latent space.
-        """
-        # Encode the target images into latent space.
-        target_latents = self.encode(target)
-        cond_latents = self.encode(cond, cond=True)
-        # Use ImageConditionalDenoisingDiffusion's forward (or loss computation) on latents
-        return super().forward(target_latents, cond=cond_latents)
+        return ret
     
 
     @torch.inference_mode()
@@ -116,3 +161,19 @@ class ImageConditionalLatentDiffusionImage(ImageConditionalDenoisingDiffusion):
         else:
             image_samples = self.decode(samples)
             return image_samples
+        
+        
+    def forward(self, target, cond):
+        """
+        Forward pass computes the diffusion loss on target images conditioned on image.
+        
+        :param target: Batch of target images.
+        :param cond: Batch of condition images.
+        :return: Diffusion loss in the latent space.
+        """
+        # Encode the target images into latent space.
+        target_latents = self.encode(target)
+        cond_latents = self.encode(cond, cond=True)
+        # Use ImageConditionalDenoisingDiffusion's forward (or loss computation) on latents
+        return super().forward(target_latents, cond=cond_latents)
+    
