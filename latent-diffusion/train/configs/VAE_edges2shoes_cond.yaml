@@ -1,0 +1,40 @@
+train_images_path: "../data/pix2pix/edges2shoes/train/condition"    # update with your dataset path
+val_images_path: "../data/pix2pix/edges2shoes/val/condition"       # update with your dataset path
+batch_size: 128
+num_workers: 4
+
+checkpoints_path: "results/VAE/edges2shoes_cond_32_to_16/checkpoints"
+filename: "model_{epoch}"
+samples_path: "results/VAE/edges2shoes_cond_32_to_16/samples"
+
+every_n_epochs: 1
+max_epochs: 100
+
+ckpt_path: null
+
+# ─── VAE (VQModel) settings ───────────────────────────────────────────────────
+
+ddconfig:
+  double_z: false
+  z_channels: 3
+  resolution: 32         # update with your image size 
+  in_channels: 3
+  out_ch: 3
+  ch: 64
+  ch_mult: [1, 2]        # update based on the desired latent size
+  num_res_blocks: 2
+  attn_resolutions: []
+  dropout: 0.0
+
+lossconfig:
+  target: "taming.modules.losses.vqperceptual.VQLPIPSWithDiscriminator"
+  params:
+    disc_conditional: false
+    disc_in_channels: 3
+    disc_start: 0
+    disc_weight: 0.75
+    codebook_weight: 1.0
+
+embed_dim: 3
+n_embed: 8192
+base_learning_rate: 4.5e-06

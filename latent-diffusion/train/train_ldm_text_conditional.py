@@ -18,10 +18,10 @@ cfg = load_config(args.config)
 
 
 # ─── Dataset Setup ────────────────────────────────────────────────────────────
-from utils.data import ImageConditionalDataset
+from utils.data import TextConditionalDataset
 
 dataset_cfg = cfg['dataset']
-dataset = ImageConditionalDataset(dataset_cfg['dataset_root'], 
+dataset = TextConditionalDataset(dataset_cfg['dataset_root'], 
                                   image_size = dataset_cfg['image_size'])
 
 # ─── Import and Instantiate Your VQModels ─────────────────────────────────────────────────────────
@@ -29,32 +29,9 @@ dataset = ImageConditionalDataset(dataset_cfg['dataset_root'],
 sys.path.append('./latent-diffusion')
 from ldm.models.autoencoder import VQModel  
 
-condition_vae = VQModel(
-    ddconfig   = cfg['ddconfig'],
-    lossconfig = cfg['lossconfig'],
-    n_embed    = cfg['n_embed'],
-    embed_dim  = cfg['embed_dim'],
-    monitor    = "val/rec_loss"
-)
-
-condition_vae.learning_rate = cfg['base_learning_rate']
-
-condition_checkpoint = torch.load(cfg['condition_checkpoint_path'], map_location="cpu")
-
-if "state_dict" in condition_checkpoint:
-    state_dict = condition_checkpoint["state_dict"]
-else:
-    state_dict = condition_checkpoint
-
-condition_vae.load_state_dict(state_dict)
-condition_vae.eval()  
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-condition_vae.to(device)
-
 # Target VAE
 
-target_vae = VQModel(
+vae = VQModel(
     ddconfig   = cfg['ddconfig'],
     lossconfig = cfg['lossconfig'],
     n_embed    = cfg['n_embed'],
@@ -62,7 +39,7 @@ target_vae = VQModel(
     monitor    = "val/rec_loss"
 )
 
-target_vae.learning_rate = cfg['base_learning_rate']
+vae.learning_rate = cfg['base_learning_rate']
 
 target_checkpoint = torch.load(cfg['target_checkpoint_path'], map_location="cpu")
 
@@ -71,18 +48,18 @@ if "state_dict" in target_checkpoint:
 else:
     state_dict = target_checkpoint
 
-target_vae.load_state_dict(state_dict)
-target_vae.eval()  
+vae.load_state_dict(state_dict)
+vae.eval()  
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-target_vae.to(device)
+vae.to(device)
 
 
 # ─── Unet Setup ─────────────────────────────────────────────────────────
 
 sys.path.append('./denoising-diffusion-pytorch')
 from denoising_diffusion.utils import *
-from denoising_diffusion.denoising_diffusion_image_conditional import Unet, ImageConditionalTrainer
+from denoising_diffusion.denoising_diffusion_text_conditional import Unet, TextConditionalTrainer
 
 unet_cfg = cfg['unet']
 unet = Unet(
@@ -90,33 +67,31 @@ unet = Unet(
     dim_mults      = tuple(unet_cfg["dim_mults"]),
     dropout        = unet_cfg['dropout'],
     channels       = unet_cfg['channels'],
-    cond_channels  = unet_cfg['cond_channels'],      
+    self_condition = unet_cfg['self_condition'],    
+    text_condition = unet_cfg['text_condition'],
+    use_cross_attn = unet_cfg['use_cross_attn']
 )
 
 # ─── Diffusion Setup ─────────────────────────────────────────────────────────
 
-from ldm.models.latent_diffusion_image_conditional import ImageConditionalLatentDiffusion  
+from ldm.models.latent_diffusion_text_conditional import TextConditionalLatentDiffusion  
 
 shape = condition_vae.decoder.z_shape
 latent_shape = (shape[1], shape[2], shape[3])
 
 latentdiffusion_cfg=cfg['latentdiffusion']
-diffusion = ImageConditionalLatentDiffusion(
-    unet,
-    vae          = target_vae,
+diffusion = TextConditionalLatentDiffusion(
+    model        = unet,
+    vae          = vae,
     latent_shape = latent_shape,
-    init_image_size = dataset_cfg['image_size'],
-    cond_vae     = condition_vae,
     timesteps    = latentdiffusion_cfg['timesteps'],
-    condition_data_folder = dataset_cfg['dataset_root']+'/condition'          
 )
-
 
 # ─── Trainer Setup ─────────────────────────────────────────────────────────
 
 trainer_cfg = cfg['trainer']
 
-trainer = ImageConditionalTrainer(
+trainer = TextConditionalTrainer(
     diffusion_model       = diffusion,
     dataset               = dataset,
     train_batch_size      = trainer_cfg['train_batch_size'],
@@ -128,8 +103,6 @@ trainer = ImageConditionalTrainer(
     num_fid_samples       = trainer_cfg['num_fid_samples'],
     results_folder        = trainer_cfg['results_folder']            
 )
-
-
 
 
 # ─── Main Training Routine ──────────────────────────────────────────────────

@@ -62,6 +62,7 @@ model = VQModel(
     n_embed=cfg['n_embed'],
     embed_dim=cfg['embed_dim'],
     monitor="val/rec_loss",  # monitor metric for checkpointing
+    lr_g_factor = 1,
 )
 
 model.learning_rate = cfg['base_learning_rate']

@@ -15,7 +15,7 @@ from denoising_diffusion.utils import identity
 from ldm.models.autoencoder import VQModel  # VAE with .encode() and .decode() methods
 
 class ImageConditionalLatentDiffusion(ImageConditionalDenoisingDiffusion):
-    def __init__(self, model, vae, latent_shape, cond_vae=None,  **kwargs):
+    def __init__(self, model, vae, latent_shape, init_image_size, cond_vae=None,  **kwargs):
         """
         Latent Diffusion Model for image conditioning.
         
@@ -36,6 +36,7 @@ class ImageConditionalLatentDiffusion(ImageConditionalDenoisingDiffusion):
         self.vae = vae
         self.cond_vae = cond_vae if cond_vae is not None else self.vae
 
+        self.init_image_size = init_image_size
         self.latent_channels = latent_shape[0]   # Save latent channels if needed.
         # Optionally, you can override the model's channels attribute if required.  
         self.model.channels = self.latent_channels
@@ -87,6 +88,10 @@ class ImageConditionalLatentDiffusion(ImageConditionalDenoisingDiffusion):
         # Define a default transform if not already defined
         if not hasattr(self, "cond_transform"):
             self.cond_transform = T.Compose([
+                T.Lambda(nn.Identity()),
+                T.Resize(self.init_image_size),
+                nn.Identity(),
+                T.CenterCrop(self.init_image_size),
                 T.ToTensor()
             ])
                     
@@ -176,4 +181,3 @@ class ImageConditionalLatentDiffusion(ImageConditionalDenoisingDiffusion):
         cond_latents = self.encode(cond, cond=True)
         # Use ImageConditionalDenoisingDiffusion's forward (or loss computation) on latents
         return super().forward(target_latents, cond=cond_latents)
-    
