@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from contextlib import contextmanager
 
 import sys
-sys.path.append('/home/user1809/Desktop/diffusion-models-archive/')
+sys.path.append('/home/user1809/Desktop/diffusion-models/')
 
 from taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 
