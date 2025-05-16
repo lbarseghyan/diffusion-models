@@ -49,7 +49,7 @@ trainer:
   dataset_root: "../data/pix2pix/edges2shoes/train"    # update with your dataset path       
   train_batch_size: 64
   train_lr: 2e-4
-  train_num_steps: 800000
+  train_num_steps: 100000
   save_and_sample_every: 10000
   num_fid_samples: 1000
   results_folder: "results/ldm/edges2shoes_latent_32_to_16"

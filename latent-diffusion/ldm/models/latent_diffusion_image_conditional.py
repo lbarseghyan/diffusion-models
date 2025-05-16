@@ -162,7 +162,7 @@ class ImageConditionalLatentDiffusion(ImageConditionalDenoisingDiffusion):
             # Decode latent samples back to image space.
             image_samples = self.decode(samples[1])
             cond = samples[0]
-            return (image_samples, cond)
+            return (cond, image_samples)
         else:
             image_samples = self.decode(samples)
             return image_samples

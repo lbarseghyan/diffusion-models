@@ -41,6 +41,49 @@ conda activate diff
 
 <br>
 
+## Data Preparation
+
+Before training or evaluating diffusion models, download and preprocess the required datasets. Three helper scripts are provided under `data/scripts/`:
+
+### Usage
+
+1. **CIFAR‑10**
+
+   ```bash
+   cd data/scripts
+   python3 download_and_preprocess_cifar10.py
+   ```
+
+   * Raw data will be placed under `data/raw/cifar-10-batches-py/` 
+   * Processed data in `data/cifar-10/`
+
+2. **edges2shoes**
+
+   ```bash
+   cd data/scripts
+   python3 download_edges2shoes.py
+   ```
+
+   * Raw archive and extracted files under `data/raw/edges2shoes/`
+   * Processed data in `data/edges2shoes/`
+
+3. **COCO (minitrain, val, test)**
+
+   ```bash
+   cd data/scripts
+   python3 download_and_preprocess_coco.py
+   ```
+
+   * COCO-minitrain via Kaggle CLI into `data/raw/coco/coco_minitrain/`
+   * COCO 2017 val/test via direct URLs into `data/raw/coco/{val2017,test2017}/`
+   * Processed data in `data/coco/`
+
+After running each script, your `data/` folder will contain both the raw downloads (preserved) and the ready-to-use data for training and evaluation.
+
+> **Note:** Once you have your processed data confirmed and no longer need to re-run preprocessing, you can safely delete the corresponding subfolders under `data/raw/` to free up disk space.
+
+<br>
+
 ## Quick Examples
 
 ### Train DDPM on CIFAR‑10
