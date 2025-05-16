@@ -1,5 +1,4 @@
 import argparse
-from denoising_diffusion import Unet, DenoisingDiffusion, Trainer, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from multiprocessing import cpu_count
 from denoising_diffusion.utils import *
@@ -12,19 +11,33 @@ import re
 from ema_pytorch import EMA
 from denoising_diffusion.inception_score_evaluation import InceptionScoreEvaluation
 from denoising_diffusion.fid_evaluation import FIDEvaluation
+from denoising_diffusion.denoising_diffusion_image_conditional import Unet, ImageConditionalDenoisingDiffusion
+from train.utils.data import ImageConditionalDataset
 from torch.utils.data import DataLoader
 
 
-model = Unet(
-    dim = 64,
-    dim_mults = (1, 2, 4, 8),
-    dropout = 0.1,
+dataset = ImageConditionalDataset('/home/user1809/Desktop/data/pix2pix/edges2shoes/train', 
+                                  32)
+def image_only_collate(batch):
+    # batch = [(img, cond), (img, cond), ...]
+    imgs = torch.stack([b[0] for b in batch])
+    return imgs                     # no conditions
+
+
+unet = Unet(
+    dim            = 64,
+    dim_mults      = (1, 2, 4, 8),
+    dropout        = 0.1,
+    channels       = 3,
+    cond_channels  = 3,      
+    self_condition = False,    
 )
 
-diffusion = DenoisingDiffusion(
-    model,
-    image_size = 32,
-    timesteps = 1000,           # number of steps
+diffusion = ImageConditionalDenoisingDiffusion(
+    model                 = unet,
+    image_size            = 32,
+    timesteps             = 1000,        
+    condition_data_folder = '../data/pix2pix/edges2shoes/train/condition'
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -38,7 +51,6 @@ num_samples = 25
 batch_size = 64
 inception_block_idx =2048  #from trainer
 image_size = 32            #from trainer
-training_images_folder = '../data/cifar-10/train_images'
 
 if __name__ == '__main__':
 
@@ -74,7 +86,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--ddim_sampling_timesteps",
         type=int,
-        default=10,
+        default=1000,
         help="Number of timesteps for DDIM sampling (default: 200)"
     )
 
@@ -137,11 +149,10 @@ if __name__ == '__main__':
     writer = SummaryWriter(log_dir=str(generation_results_folder / "tensorboard_logs"))
 
     if calculate_fid:
-            convert_image_to = {1: 'L', 3: 'RGB', 4: 'RGBA'}.get(diffusion.channels)
-            augment_horizontal_flip = True  # from trainer
-            ds = Dataset(training_images_folder, image_size, augment_horizontal_flip = augment_horizontal_flip, convert_image_to = convert_image_to)
-            dl = DataLoader(ds, batch_size = batch_size, shuffle = True, pin_memory = True, num_workers = cpu_count())
-            dl = cycle(dl)
+        convert_image_to = {1: 'L', 3: 'RGB', 4: 'RGBA'}.get(diffusion.channels)
+        augment_horizontal_flip = True  # from trainer
+        dl = DataLoader(dataset, batch_size = batch_size, shuffle = True, pin_memory = True, num_workers = cpu_count(), collate_fn=image_only_collate)
+        dl = cycle(dl)
 
     for milestone in tqdm(milestones): 
         data = torch.load(str(Path(trained_models_folder) / f'model-{milestone}.pt'), map_location=device, weights_only=True)
