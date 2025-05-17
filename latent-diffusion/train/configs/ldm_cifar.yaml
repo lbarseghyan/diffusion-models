@@ -24,7 +24,7 @@ embed_dim: 3
 n_embed: 8192
 base_learning_rate: 4.5e-06
 
-checkpoint_path: "/home/user1809/Desktop/diffusion-models-archive/results/VAE/cifar_10_latent_16/checkpoints/model_epoch=279.ckpt"
+checkpoint_path: "/home/user1809/Desktop/diffusion-models/results/VAE/cifar_10_latent_16/checkpoints/model_epoch=279.ckpt"
 
 # ─── Diffusion settings ────────────────────────────────────────────────
 diffusion_timesteps: 1000

@@ -1,3 +1,8 @@
+import yaml
+import sys
+sys.path.append('./denoising-diffusion-pytorch')
+
+
 import argparse
 from denoising_diffusion import Unet, DenoisingDiffusion, Trainer, Dataset
 from torch.utils.tensorboard import SummaryWriter
@@ -15,17 +20,69 @@ from denoising_diffusion.fid_evaluation import FIDEvaluation
 from torch.utils.data import DataLoader
 
 
+# ─── Load config ─────────────────────────────────────────────────────────
+
+def load_config(path):
+    with open(path, 'r') as f:
+        return yaml.safe_load(f)
+    
+config = '/home/user1809/Desktop/diffusion-models/latent-diffusion/train/configs/ldm_cifar.yaml'
+cfg = load_config(config)
+
+
+
+
+# ─── Import and Instantiate Your VQModel ─────────────────────────────────────────────────────────
+import sys
+sys.path.append('./latent-diffusion')
+from ldm.models.autoencoder import VQModel  
+
+vae = VQModel(
+    ddconfig   = cfg['ddconfig'],
+    lossconfig = cfg['lossconfig'],
+    n_embed    = cfg['n_embed'],
+    embed_dim  = cfg['embed_dim'],
+    monitor    = "val/rec_loss"
+)
+
+vae.learning_rate = cfg['base_learning_rate']
+
+checkpoint = torch.load(cfg['checkpoint_path'], map_location="cpu")
+
+if "state_dict" in checkpoint:
+    state_dict = checkpoint["state_dict"]
+else:
+    state_dict = checkpoint
+
+vae.load_state_dict(state_dict)
+vae.eval()  
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+vae.to(device)
+
+
+# ─── Unet Setup ─────────────────────────────────────────────────────────
+
 model = Unet(
     dim = 64,
     dim_mults = (1, 2, 4, 8),
     dropout = 0.1,
 )
 
-diffusion = DenoisingDiffusion(
+# ─── Diffusion Setup ─────────────────────────────────────────────────────────
+
+from ldm.models.latent_diffusion import LatentDiffusion  
+
+shape = vae.decoder.z_shape
+latent_shape = (shape[1], shape[2], shape[3])
+
+diffusion = LatentDiffusion(
     model,
-    image_size = 32,
-    timesteps = 1000,           # number of steps
+    vae,
+    latent_shape,
+    timesteps = 1000,          
 )
+# ------------------------------
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

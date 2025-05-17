@@ -29,8 +29,8 @@ embed_dim: 3
 n_embed: 8192
 base_learning_rate: 4.5e-06
 
-condition_checkpoint_path: "/home/user1807/Desktop/diffusion-models-archive/results/VAE/edges2shoes_cond_32_to_16/checkpoints/model_epoch=99.ckpt"
-target_checkpoint_path: "/home/user1807/Desktop/diffusion-models-archive/results/VAE/edges2shoes_target_32_to_16/checkpoints/model_epoch=69.ckpt"
+condition_checkpoint_path: "/home/user1807/Desktop/diffusion-models/results/VAE/edges2shoes_cond_32_to_16/checkpoints/model_epoch=99.ckpt"
+target_checkpoint_path: "/home/user1807/Desktop/diffusion-models/results/VAE/edges2shoes_target_32_to_16/checkpoints/model_epoch=69.ckpt"
 
 # ─── Diffusion settings ────────────────────────────────────────────────
 latentdiffusion:

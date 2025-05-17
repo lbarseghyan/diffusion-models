@@ -16,8 +16,6 @@ from train.utils.data import ImageConditionalDataset
 from torch.utils.data import DataLoader
 
 
-dataset = ImageConditionalDataset('/home/user1809/Desktop/data/pix2pix/edges2shoes/train', 
-                                  32)
 def image_only_collate(batch):
     # batch = [(img, cond), (img, cond), ...]
     imgs = torch.stack([b[0] for b in batch])
@@ -64,6 +62,14 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
+        "--images_folder",
+        type=str,
+        default='/home/user1809/Desktop/data/pix2pix/edges2shoes/train',
+        help="Folder for real images"
+    )
+
+
+    parser.add_argument(
         "--model",
         type=str,
         default=None,
@@ -77,11 +83,11 @@ if __name__ == '__main__':
         help="Folder for DDIM results (default: auto-generated)"
     )
 
-    parser.add_argument(
-        "--ddim_sampling",
-        action="store_false",
-        help="If set, use DDIM sampling; otherwise, use DDPM sampling."
-    )
+    # parser.add_argument(
+    #     "--ddim_sampling",
+    #     action="store_false",
+    #     help="If set, use DDIM sampling; otherwise, use DDPM sampling."
+    # )
 
     parser.add_argument(
         "--ddim_sampling_timesteps",
@@ -113,14 +119,17 @@ if __name__ == '__main__':
 
     # Use the command-line argument for ddim_sampling_timesteps
     trained_models_folder = args.trained_models_folder
+    images_folder = args.images_folder
     ddim_sampling_timesteps = args.ddim_sampling_timesteps      # 200
     generation_results_folder = args.generation_results_folder              # None
-    ddim_sampling = args.ddim_sampling   # True
+    # ddim_sampling = args.ddim_sampling   # True
+    ddim_sampling = False
     sampling_model = args.model 
     calculate_fid = args.calculate_fid 
     calculate_is = args.calculate_is 
     num_fid_samples = args.num_fid_samples 
 
+    dataset = ImageConditionalDataset(images_folder, 32)
 
     # Find the model numbers
     if sampling_model is not None:
@@ -151,7 +160,8 @@ if __name__ == '__main__':
     if calculate_fid:
         convert_image_to = {1: 'L', 3: 'RGB', 4: 'RGBA'}.get(diffusion.channels)
         augment_horizontal_flip = True  # from trainer
-        dl = DataLoader(dataset, batch_size = batch_size, shuffle = True, pin_memory = True, num_workers = cpu_count(), collate_fn=image_only_collate)
+        shuffle = True
+        dl = DataLoader(dataset, batch_size = batch_size, shuffle = shuffle, pin_memory = True, num_workers = cpu_count(), collate_fn=image_only_collate)
         dl = cycle(dl)
 
     for milestone in tqdm(milestones): 
